@@ -99,11 +99,17 @@ static int encode_qname(const char *name, uint8_t *out, size_t out_len, size_t *
 }
 
 int mdns_parse_query(const uint8_t *packet, size_t packet_len, dns_question_t *question) {
+    uint16_t flags;
     uint16_t qdcount;
     size_t offset;
 
     if (packet == NULL || question == NULL || packet_len < 12) {
         return -1;
+    }
+
+    flags = read_u16(&packet[2]);
+    if (flags & 0x8000) {
+        return 0;
     }
 
     qdcount = read_u16(&packet[4]);
@@ -159,8 +165,8 @@ int mdns_build_response(uint8_t *out, size_t out_len, const dns_question_t *ques
         }
         write_u16(&out[offset], 0xC00C);
         write_u16(&out[offset + 2], DNS_TYPE_A);
-        write_u16(&out[offset + 4], DNS_CLASS_IN);
-        write_u32(&out[offset + 6], 120);
+        write_u16(&out[offset + 4], DNS_CLASS_IN_FLUSH);
+        write_u32(&out[offset + 6], MDNS_DEFAULT_TTL);
         write_u16(&out[offset + 10], 4);
         memcpy(&out[offset + 12], &record->ipv4, 4);
         offset += 16;
@@ -171,8 +177,8 @@ int mdns_build_response(uint8_t *out, size_t out_len, const dns_question_t *ques
         }
         write_u16(&out[offset], 0xC00C);
         write_u16(&out[offset + 2], DNS_TYPE_AAAA);
-        write_u16(&out[offset + 4], DNS_CLASS_IN);
-        write_u32(&out[offset + 6], 120);
+        write_u16(&out[offset + 4], DNS_CLASS_IN_FLUSH);
+        write_u32(&out[offset + 6], MDNS_DEFAULT_TTL);
         write_u16(&out[offset + 10], 16);
         memcpy(&out[offset + 12], &record->ipv6, 16);
         offset += 28;

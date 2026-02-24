@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (hostdb_init(&local_record, NULL) != 0) {
+    if (hostdb_init(&local_record, NULL, cfg.interface_name) != 0) {
         log_error("Failed to initialize host database");
         log_close();
         return 1;
@@ -53,8 +53,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    signal(SIGINT, on_signal);
-    signal(SIGTERM, on_signal);
+    {
+        struct sigaction sa;
+        sa.sa_handler = on_signal;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+    }
 
     log_info("mdnsd started on interface %s for host %s", cfg.interface_name, local_record.hostname);
 
@@ -114,13 +120,23 @@ int main(int argc, char **argv) {
             {
                 int out_len;
                 ssize_t sent;
+                struct sockaddr_in6 mdns_dst;
 
                 out_len = mdns_build_response(out_buf, sizeof(out_buf), &question, &match);
                 if (out_len <= 0) {
                     continue;
                 }
 
-                sent = sendto(sockfd, out_buf, (size_t)out_len, 0, (struct sockaddr *)&src_addr, src_len);
+                memset(&mdns_dst, 0, sizeof(mdns_dst));
+                mdns_dst.sin6_family = AF_INET6;
+                mdns_dst.sin6_port = htons(MDNS_PORT);
+                if (inet_pton(AF_INET6, "ff02::fb", &mdns_dst.sin6_addr) != 1) {
+                    log_warn("Failed to set mDNS multicast destination");
+                    continue;
+                }
+
+                sent = sendto(sockfd, out_buf, (size_t)out_len, 0,
+                              (struct sockaddr *)&mdns_dst, sizeof(mdns_dst));
                 if (sent < 0) {
                     log_warn("sendto failed: %s", strerror(errno));
                 } else {

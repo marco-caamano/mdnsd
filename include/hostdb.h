@@ -12,7 +12,7 @@ typedef struct {
     int has_ipv6;
 } host_record_t;
 
-int hostdb_init(host_record_t *record, const char *hostname_hint);
+int hostdb_init(host_record_t *record, const char *hostname_hint, const char *ifname);
 int hostdb_lookup(const host_record_t *record, const char *qname, host_record_t *out);
 
 #endif

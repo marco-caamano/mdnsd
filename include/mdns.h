@@ -12,6 +12,8 @@
 #define DNS_TYPE_A 1
 #define DNS_TYPE_AAAA 28
 #define DNS_CLASS_IN 1
+#define DNS_CLASS_IN_FLUSH (DNS_CLASS_IN | 0x8000)
+#define MDNS_DEFAULT_TTL 120
 
 typedef struct {
     char name[256];
