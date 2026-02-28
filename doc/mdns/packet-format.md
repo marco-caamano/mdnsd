@@ -548,6 +548,24 @@ Total:   50 bytes
 
 ### mDNS SRV Record Query
 
+**Note on SRV Query Patterns:**
+
+SRV queries in mDNS can follow two patterns:
+
+1. **Service Discovery (Broad Query)**: `_http._tcp.local`
+   - Discovers **all** HTTP services on the network
+   - Used for initial service enumeration
+   - Typically returns multiple SRV records from different hosts
+   - Example use case: "Find all HTTP servers on my network"
+
+2. **Specific Device Lookup (Targeted Query)**: `_http._tcp.homeserver.local`
+   - Queries for HTTP service on a **specific host** (homeserver)
+   - Used when the hostname is already known
+   - Returns SRV record(s) only from the named host
+   - Example use case: "Does homeserver offer HTTP service, and on which port?"
+
+The example below demonstrates pattern #2 (specific device lookup). This is useful when you already know the device name but need to discover which port its service runs on, or to verify the service is available.
+
 ```
 Raw Hex:
 00 00  <- Transaction ID
@@ -620,6 +638,33 @@ already appear elsewhere in the packet, reducing answer size to ~16 bytes.
 
 ### mDNS TXT Record Query
 
+**TXT Record Purpose and Usage:**
+
+TXT records (TYPE=16) provide **metadata** about a service or host. They are commonly used alongside SRV records in service discovery to convey:
+
+- **Service configuration**: API version, supported protocols, feature flags
+- **Authentication requirements**: Auth methods, encryption options
+- **Connection parameters**: Paths, endpoints, timeouts
+- **Service capabilities**: Supported operations, resource limits
+- **Administrative info**: Vendor, model, firmware version
+
+**TXT Record Format Rules:**
+
+1. **Encoding**: Each attribute is a length-prefixed string (1-byte length + data)
+2. **Key=Value Convention**: Attributes typically use `key=value` format (but not required)
+3. **String Length Limits**: Each string can be 0-255 bytes (length byte is 1 byte = 0x00 to 0xFF)
+4. **Total RDATA Limit**: Total TXT RDATA must fit in 65535 bytes (RDLEN is 2 bytes)
+5. **Character Encoding**: UTF-8 is recommended, ASCII is common
+6. **Empty TXT Record**: Valid to have RDLEN=1 with a single 0x00 byte (zero-length string)
+7. **No Null-Termination**: Strings are NOT null-terminated; length byte defines the boundary
+
+**Common Conventions:**
+
+- Keys should be lowercase, alphanumeric + underscore/hyphen
+- Boolean flags: presence of key means true (e.g., `secure`), or use `key=true`/`key=false`
+- Multiple values for same key: repeat the key (e.g., `proto=http`, `proto=https`)
+- Reserved keys: `txtvers` (version of TXT record scheme)
+
 ```
 Raw Hex:
 00 00  <- Transaction ID
@@ -688,6 +733,55 @@ TXT Record Data Details:
 - "auth=basic_auth" = 14 bytes + 1 length byte (0x0E) = 15 bytes total
 - RDATA = 12 + 13 + 15 = 40 bytes (0x28) ✓
 ```
+
+**TXT Record Encoding Examples:**
+
+**Example 1: Empty TXT Record**
+```
+RDATA (1 byte):
+00  <- Zero-length string (no attributes)
+
+Use case: Service exists but has no metadata to announce
+```
+
+**Example 2: Single Boolean Flag**
+```
+RDATA (7 bytes):
+06 73 65 63 75 72 65  <- "secure" (6 bytes: s-e-c-u-r-e)
+
+Use case: Indicates service requires secure connection
+```
+
+**Example 3: Multiple Values for Same Key**
+```
+RDATA (23 bytes):
+0A 70 72 6f 74 6f 3d 68 74 74 70  <- "proto=http" (10 bytes)
+0B 70 72 6f 74 6f 3d 68 74 74 70 73  <- "proto=https" (11 bytes)
+
+Use case: Service supports both HTTP and HTTPS
+```
+
+**Example 4: Mixed Attributes with Special Characters**
+```
+RDATA (43 bytes):
+0B 74 78 74 76 65 72 73 3d 31  <- "txtvers=1" (9 bytes: t-x-t-v-e-r-s-=-1)
+12 76 65 6e 64 6f 72 3d 41 63 6d 65 20 43 6f 72 70 2e  <- "vendor=Acme Corp." (17 bytes)
+13 6d 6f 64 65 6c 3d 58 59 5a 2d 31 32 33 34 2f 41  <- "model=XYZ-1234/A" (16 bytes)
+
+Use case: Device identification with version, vendor, and model info
+```
+
+**TXT Record Best Practices:**
+
+- ✓ Keep TXT records small (typically < 200 bytes) to avoid fragmentation
+- ✓ Use concise key names (e.g., `ver` instead of `version`) to save space
+- ✓ Document your TXT record schema for interoperability
+- ✓ Include `txtvers=N` key to version your schema for future evolution
+- ✓ Avoid including sensitive data (passwords, tokens) in TXT records
+- ✓ Use consistent key naming across related services
+- ✗ Don't use whitespace in keys or around `=` (e.g., avoid `key = value`)
+- ✗ Don't exceed 255 bytes for a single attribute string
+- ✗ Don't use null bytes (0x00) within string data (it would appear as end-of-string)
 
 ---
 
