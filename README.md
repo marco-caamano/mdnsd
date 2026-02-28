@@ -4,6 +4,7 @@ A lightweight IPv6 mDNS (Multicast DNS) implementation in C99, separated into **
 
 - **Server (`mdnsd`)**: Responder that listens on a network interface and responds to mDNS queries
 - **Client (`mdnsc`)**: Query tool for discovering services and resolving hostnames via mDNS
+- **Browser (`mdns_browse`)**: Service browser that sends PTR queries and prints discovered responses
 
 ## Features
 
@@ -35,6 +36,7 @@ make
 ```
 
 This builds both `mdnsd` (server) and `mdnsc` (client) binaries in the repository root.
+It also builds `mdns_browse` (service browser).
 
 ### Build Settings
 
@@ -190,6 +192,34 @@ mdnsc -6 myhost
 mdnsc -v myhost
 ```
 
+## Browser: `mdns_browse`
+
+The browser client sends a PTR query for a service type and listens for responses during a configurable timeout window.
+
+### Usage
+
+```bash
+mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
+```
+
+### Options
+
+- `-s, --service` (required): Service type to browse (e.g., `_http._tcp.local`)
+- `-w, --timeout`: Seconds to wait for responses (default: 2)
+- `-i, --interface`: Network interface name (optional, e.g., `eth0`)
+- `-v, --verbose`: Verbose output
+- `-h, --help`: Show help
+
+### Examples
+
+```bash
+# Browse HTTP services for 5 seconds
+mdns_browse -s _http._tcp.local -w 5
+
+# Browse SSH services on interface eth0
+mdns_browse -s _ssh._tcp.local -i eth0
+```
+
 ## Installation
 
 ```bash
@@ -197,6 +227,7 @@ make install
 ```
 
 This installs `mdnsd` and `mdnsc` to `/usr/local/bin/`.
+It also installs `mdns_browse` to `/usr/local/bin/`.
 
 ## Uninstallation
 
@@ -293,6 +324,14 @@ Client argument parsing:
 - Verbose mode
 - Positional query target argument
 
+#### `client/src/mdns_browse.c`
+
+Service browsing client:
+- Sends PTR browse queries for service types (for example `_http._tcp.local`)
+- Waits for responses up to a configurable timeout (`-w`)
+- Parses and prints PTR, SRV, TXT, A, and AAAA records
+- Supports optional IPv6 multicast interface selection (`-i`)
+
 ## Query Examples
 
 ### Server: Using dig for queries
@@ -314,7 +353,7 @@ dig @::1 -p 5353 "_http._tcp.local" SRV
 ## Scope and Limitations
 
 - Query support: A/AAAA hostname resolution and SRV/TXT service discovery
-- PTR browsing responses are not implemented
+- Service-type browsing: PTR via `mdns_browse`
 - Probing and conflict detection are not implemented
 - Host database uses loopback addresses (127.0.0.1, ::1) by default
 - Designed as a minimalistic mDNS implementation for basic service discovery

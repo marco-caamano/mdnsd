@@ -10,6 +10,7 @@
 #define MDNS_MAX_PACKET 1500
 
 #define DNS_TYPE_A 1
+#define DNS_TYPE_PTR 12
 #define DNS_TYPE_TXT 16
 #define DNS_TYPE_AAAA 28
 #define DNS_TYPE_SRV 33

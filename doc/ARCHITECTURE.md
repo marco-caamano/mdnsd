@@ -1,6 +1,9 @@
 # Client Documentation
 
-The mDNS client (`mdnsc`) is a query tool for discovering services and resolving hostnames on a local network using mDNS.
+The mDNS client tools are query and browse utilities for local mDNS discovery:
+
+- `mdnsc`: single-shot hostname/service query tool
+- `mdns_browse`: service-type browser that sends PTR queries and prints responses during a timeout window
 
 ## Overview
 
@@ -10,10 +13,18 @@ The client performs single-shot mDNS queries for:
 
 Unlike the server which runs continuously, the client sends one query and waits for responses with a timeout.
 
+The browser performs service-type browsing for:
+- PTR records (`_service._tcp.local` style browse queries)
+- Related SRV/TXT/A/AAAA records included in responses
+
 ## Usage
 
 ```bash
 mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
+```
+
+```bash
+mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
 ```
 
 ## Options
@@ -26,6 +37,13 @@ mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
 - `-4, --ipv4`: Force IPv4-only queries (A records)
 - `-6, --ipv6`: Force IPv6-only queries (AAAA records)
 - `-v, --verbose`: Verbose output with additional details
+- `-h, --help`: Show help message
+
+`mdns_browse` options:
+- `-s, --service`: Service type to browse (required, e.g. `_http._tcp.local`)
+- `-w, --timeout`: Seconds to wait for responses (default: 2)
+- `-i, --interface`: Optional interface name for IPv6 multicast scope
+- `-v, --verbose`: Verbose output
 - `-h, --help`: Show help message
 
 ## Examples
@@ -84,6 +102,19 @@ IPv4-only query with verbose output:
 $ mdnsc -4 -v myhost
 ```
 
+### Service Browsing
+
+Browse HTTP services for 5 seconds:
+
+```bash
+$ mdns_browse -s _http._tcp.local -w 5
+Query sent: PTR _http._tcp.local
+Response from [ipv6-address]
+  PTR _http._tcp.local -> My Web Server._http._tcp.local (ttl=120)
+  SRV My Web Server._http._tcp.local port=8080 priority=0 weight=0 target=my-host.local (ttl=120)
+  TXT My Web Server._http._tcp.local "path=/; version=1.0" (ttl=120)
+```
+
 ## Output
 
 The client prints responses in a simple format:
@@ -98,6 +129,12 @@ If no response is received within the timeout (1 second):
 
 ```
 No response for <query-target>
+```
+
+If no browse response is received within the timeout:
+
+```
+No responses for <service-type> within <seconds> second(s)
 ```
 
 ## Exit Codes
@@ -115,6 +152,16 @@ No response for <query-target>
 4. Send query to mDNS multicast group (ff02::fb:5353)
 5. Wait for response with 1-second timeout using `select()`
 6. Print result or timeout message
+7. Clean up and exit
+
+### Browse Process (`mdns_browse`)
+
+1. Parse service type and timeout from command-line arguments
+2. Open IPv6 UDP socket on port 5353 and join multicast group `ff02::fb`
+3. Send PTR query for the requested service type
+4. Receive packets until timeout using `select()`
+5. Parse answer, authority, and additional sections
+6. Print decoded PTR/SRV/TXT/A/AAAA records
 7. Clean up and exit
 
 ### DNS Query Types
@@ -136,9 +183,10 @@ The client processes responses by:
 ## Limitations
 
 - Single query per invocation
-- Waits only 1 second for response (fixed timeout)
+- `mdnsc` waits only 1 second for response (fixed timeout)
+- `mdns_browse` timeout is configurable with `-w`
 - Limited response parsing (prints sender only)
-- Does not cache or filter multiple responses
+- `mdnsc` does not cache or filter multiple responses
 - Only queries local link (ff02::fb scope)
 
 ## Comparison with `dig`
