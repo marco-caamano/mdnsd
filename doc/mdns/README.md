@@ -2,9 +2,19 @@
 
 Welcome to the mDNS Protocol Documentation. This guide provides a comprehensive overview of the Multicast Domain Name System (mDNS) as defined in **RFC 6762**, covering how mDNS works, packet structures, message types, and complete examples of query/response exchanges.
 
+## Table of Contents
+
+- [What is mDNS?](#what-is-mdns)
+- [Documentation Structure](#documentation-structure)
+- [Prerequisites](#prerequisites)
+- [Quick Navigation](#quick-navigation)
+- [Key Concepts at a Glance](#key-concepts-at-a-glance)
+
 ## What is mDNS?
 
 Multicast DNS (mDNS) allows devices to perform DNS-like name resolution on local networks without requiring any traditional DNS infrastructure. It enables zero-configuration service discovery and hostname resolution, making it ideal for local area networks where a centralized DNS server may not be available.
+
+[↑ back to top](#table-of-contents)
 
 ## Documentation Structure
 
@@ -18,12 +28,16 @@ This documentation is organized into focused topics for easy navigation:
 | [A-Record Exchange Guide](a-record-exchange.md) | Step-by-step walkthrough of a complete mDNS query/response for an A record |
 | [Multicast Groups](multicast-groups.md) | IPv4 and IPv6 multicast addressing, group membership, and interface binding |
 
+[↑ back to top](#table-of-contents)
+
 ## Prerequisites
 
 This documentation assumes basic familiarity with:
 - DNS concepts (domain names, resource records, queries, responses)
 - Network protocols (UDP, IP, multicast)
 - Hexadecimal notation and bit-level data representations
+
+[↑ back to top](#table-of-contents)
 
 ## Quick Navigation
 
@@ -38,6 +52,8 @@ This documentation assumes basic familiarity with:
 
 **Network Configuration?**
 1. See [Multicast Groups](multicast-groups.md) for addresses and interface setup
+
+[↑ back to top](#table-of-contents)
 
 ## Key Concepts at a Glance
 

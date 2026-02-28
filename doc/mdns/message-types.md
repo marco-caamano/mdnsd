@@ -2,6 +2,14 @@
 
 This document covers the different types of mDNS messages, their purposes, and the resource record types they contain.
 
+## Table of Contents
+
+- [Message Types](#message-types)
+- [Resource Record (RR) Types](#resource-record-rr-types)
+- [Query and Response Scenarios](#query-and-response-scenarios)
+- [Response Rules (RFC 6762)](#response-rules-rfc-6762)
+- [Summary Table: Common Record Types](#summary-table-common-record-types)
+
 ## Message Types
 
 mDNS uses DNS queries and responses, differentiated by the **QR (Query/Response)** flag in the header.
@@ -212,6 +220,8 @@ Answer Section (2nd record):
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Resource Record (RR) Types
 
 mDNS supports various resource record types. The most common in local networks are:
@@ -369,6 +379,8 @@ Format:
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Query and Response Scenarios
 
 ### Scenario 1: Simple Address Lookup
@@ -411,6 +423,8 @@ Format:
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Response Rules (RFC 6762)
 
 ### When to Respond
@@ -444,6 +458,8 @@ When a device sends an RR with **Cache Flush bit** (0x8000 in CLASS field):
 - Typical TTL: 120 seconds (unchanged by cache flush)
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Summary Table: Common Record Types
 

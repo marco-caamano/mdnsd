@@ -2,6 +2,15 @@
 
 This document walks through a complete mDNS A-record query and response exchange, showing all the stages from initial query to response receipt.
 
+## Table of Contents
+
+- [Setting the Scene](#setting-the-scene)
+- [Complete Exchange Flow](#complete-exchange-flow)
+- [Complete Timeline](#complete-timeline)
+- [Key Observations](#key-observations)
+- [Variations and Edge Cases](#variations-and-edge-cases)
+- [Summary](#summary)
+
 ## Setting the Scene
 
 **Scenario**: A user opens a web browser and tries to visit `homeserver.local`. The browser needs to discover the IPv4 address of the homeserver device on the local network.
@@ -13,6 +22,8 @@ This document walks through a complete mDNS A-record query and response exchange
 - **Multicast Address**: `224.0.0.251:5353` (IPv4) or `[ff02::fb]:5353` (IPv6)
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Complete Exchange Flow
 
@@ -453,6 +464,8 @@ The client application receives the resolved address.
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Complete Timeline
 
 ```
@@ -490,6 +503,8 @@ Time    Event                                           Duration
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Key Observations
 
 ### 1. Multicast Efficiency
@@ -524,6 +539,8 @@ Time    Event                                           Duration
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Variations and Edge Cases
 
 ### Unicast Response Requested
@@ -545,6 +562,8 @@ If homeserver was offline when query arrived:
 - Retry up to 3-4 times, then fail with "Cannot resolve name"
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Summary
 

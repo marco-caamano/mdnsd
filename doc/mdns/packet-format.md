@@ -2,6 +2,15 @@
 
 This document describes the complete structure of mDNS packets, which follow the DNS packet format defined in RFC 1035 and adapted for multicast use in RFC 6762.
 
+## Table of Contents
+
+- [Packet Structure Overview](#packet-structure-overview)
+- [Section 1: mDNS Header (DNS Wire Format, 12 bytes)](#section-1-mdns-header-dns-wire-format-12-bytes)
+- [Section 2: Question Section (Variable Length)](#section-2-question-section-variable-length)
+- [Section 3,4,5: Answer/Authority/Additional Sections (Variable Length)](#section-345-answerauthorityadditional-sections-variable-length)
+- [Complete Packet Example](#complete-packet-example)
+- [Key Points](#key-points)
+
 ## Packet Structure Overview
 
 An mDNS packet consists of **five sections** (though not all may be present):
@@ -130,6 +139,8 @@ Bit:  0   1   2 3 4   5   6   7   8   9 10 11  12 13 14 15
 - **Byte Order**: Network byte order (big-endian)
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Section 2: Question Section (Variable Length)
 
@@ -296,6 +307,8 @@ Important constraints:
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Section 3,4,5: Answer/Authority/Additional Sections (Variable Length)
 
 These sections contain **Resource Records (RRs)** with the same format.
@@ -413,6 +426,24 @@ Example: 2001:db8::1
          [0x00][0x00][0x00][0x00][0x00][0x00][0x00][0x01]
 ```
 
+#### SRV Record RDATA (Service Location)
+
+```
+RDLEN = 6 + name_length bytes
+
+    Bytes 0-1    Bytes 2-3    Bytes 4-5    Bytes 6+
+  ┌───────────┬───────────┬───────────┬──────────────────┐
+  │ Priority  │  Weight   │   Port    │  Target Name     │
+  │ (2 bytes) │ (2 bytes) │ (2 bytes) │  (compressed)    │
+  └───────────┴───────────┴───────────┴──────────────────┘
+
+Example: _http._tcp.local → (priority=0, weight=0, port=80, target=homeserver.local)
+         [0x00][0x00]      <- Priority = 0
+         [0x00][0x00]      <- Weight = 0
+         [0x00][0x50]      <- Port = 80
+         [0xC0][0x0C]      <- Target name (compressed pointer to offset 12)
+```
+
 #### TXT Record RDATA (Text Attributes)
 
 ```
@@ -424,10 +455,16 @@ Format: Length-prefixed strings
   │ (1 byte) │ (Length 1 bytes)│ (1 byte) │ (Length 2 bytes)│
   └──────────┴─────────────────┴──────────┴─────────────────┘
 
+Example: Two attributes ("version=1.0" and "path=/api")
+         [0x0B]version=1.0  <- Length 11, then string
+         [0x08]path=/api    <- Length 8, then string
+         
 Each string is prefixed with its length (including "key=value" pairs)
 ```
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Complete Packet Example
 
@@ -490,7 +527,152 @@ Answer:  16 bytes (pointer + type + class + TTL + len + data=4)
 Total:   50 bytes
 ```
 
+### mDNS SRV Record Query
+
+```
+Raw Hex:
+00 00  <- Transaction ID
+00 00  <- Flags (Query: QR=0)
+00 01  <- Question Count = 1
+00 00  <- Answer Count = 0
+00 00  <- Authority Count = 0
+00 00  <- Additional Count = 0
+05 5f 68 74 74 70  <- "_http" (len=5)
+04 5f 74 63 70  <- "_tcp" (len=4)
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver" (len=10)
+05 6c 6f 63 61 6c  <- "local" (len=5)
+00  <- Root (end of name)
+00 21  <- QTYPE = SRV record (33)
+00 01  <- QCLASS = IN (1)
+
+Breakdown:
+Header:  12 bytes
+QNAME:   26 bytes (_http._tcp.homeserver.local)
+QTYPE:   2 bytes (SRV)
+QCLASS:  2 bytes (IN)
+---------
+Total:   42 bytes
+```
+
+### mDNS SRV Record Response
+
+```
+Raw Hex:
+00 00  <- Transaction ID (matches query)
+84 00  <- Flags (Response: QR=1, AA=1)
+00 01  <- Question Count = 1
+00 01  <- Answer Count = 1
+00 00  <- Authority Count = 0
+00 00  <- Additional Count = 0
+
+(Question section - echoed back)
+05 5f 68 74 74 70  <- "_http"
+04 5f 74 63 70  <- "_tcp"
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver"
+05 6c 6f 63 61 6c  <- "local"
+00  <- Root
+00 21  <- QTYPE = SRV
+00 01  <- QCLASS = IN
+
+(Answer section)
+c0 0c  <- NAME = pointer to offset 12 (service name from question)
+00 21  <- TYPE = SRV record (33)
+80 01  <- CLASS = IN with cache flush (0x8001)
+00 00 00 78  <- TTL = 120 seconds
+00 0c  <- RDLEN = 12 bytes
+00 00  <- Priority = 0
+00 00  <- Weight = 0
+00 50  <- Port = 80
+0A 68 6f 6d 65 73 65 72 76 65 72  <- Target: "homeserver" (len=10)
+05 6c 6f 63 61 6c  <- "local" (len=5)
+00  <- Root
+
+Breakdown:
+Header:   12 bytes
+Question: 30 bytes
+Answer:   28 bytes (pointer + type + class + TTL + len + data=12)
+---------
+Total:    70 bytes
+
+Note: SRV target names are NOT compressed in this example to show full encoding.
+In practice, target names are typically compressed (2-byte pointer) if they
+already appear elsewhere in the packet, reducing answer size to ~16 bytes.
+```
+
+### mDNS TXT Record Query
+
+```
+Raw Hex:
+00 00  <- Transaction ID
+00 00  <- Flags (Query: QR=0)
+00 01  <- Question Count = 1
+00 00  <- Answer Count = 0
+00 00  <- Authority Count = 0
+00 00  <- Additional Count = 0
+08 5f 73 65 72 76 69 63 65  <- "_service" (len=8)
+05 5f 74 63 70  <- "_tcp" (len=4)
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver" (len=10)
+05 6c 6f 63 61 6c  <- "local" (len=5)
+00  <- Root (end of name)
+00 10  <- QTYPE = TXT record (16)
+00 01  <- QCLASS = IN (1)
+
+Breakdown:
+Header:  12 bytes
+QNAME:   30 bytes (_service._tcp.homeserver.local)
+QTYPE:   2 bytes (TXT)
+QCLASS:  2 bytes (IN)
+---------
+Total:   46 bytes
+```
+
+### mDNS TXT Record Response
+
+```
+Raw Hex:
+00 00  <- Transaction ID (matches query)
+84 00  <- Flags (Response: QR=1, AA=1)
+00 01  <- Question Count = 1
+00 01  <- Answer Count = 1
+00 00  <- Authority Count = 0
+00 00  <- Additional Count = 0
+
+(Question section - echoed back)
+08 5f 73 65 72 76 69 63 65  <- "_service"
+05 5f 74 63 70  <- "_tcp"
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver"
+05 6c 6f 63 61 6c  <- "local"
+00  <- Root
+00 10  <- QTYPE = TXT
+00 01  <- QCLASS = IN
+
+(Answer section)
+c0 0c  <- NAME = pointer to offset 12 (name from question)
+00 10  <- TYPE = TXT record (16)
+00 01  <- CLASS = IN (no cache flush)
+00 00 00 78  <- TTL = 120 seconds
+00 28  <- RDLEN = 40 bytes (0x28 = 40 decimal)
+0B 76 65 72 73 69 6f 6e 3d 31 2e 30  <- "version=1.0" (11 bytes: v-e-r-s-i-o-n--=-1-.-0)
+0C 70 61 74 68 3d 2f 61 70 69 2f 76 31  <- "path=/api/v1" (12 bytes: p-a-t-h-=-/-a-p-i-/-v-1)
+0E 61 75 74 68 3d 62 61 73 69 63 5f 61 75 74 68  <- "auth=basic_auth" (14 bytes: a-u-t-h-=-b-a-s-i-c-_-a-u-t-h)
+
+Breakdown:
+Header:  12 bytes
+Question: 34 bytes
+Answer:  50 bytes (pointer + type + class + TTL + len + data=40)
+---------
+Total:    96 bytes
+
+TXT Record Data Details:
+- "version=1.0"     = 11 bytes + 1 length byte (0x0B) = 12 bytes total
+- "path=/api/v1"    = 12 bytes + 1 length byte (0x0C) = 13 bytes total
+- "auth=basic_auth" = 14 bytes + 1 length byte (0x0E) = 15 bytes total
+- RDATA = 12 + 13 + 15 = 40 bytes (0x28) ✓
+```
+
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Key Points
 

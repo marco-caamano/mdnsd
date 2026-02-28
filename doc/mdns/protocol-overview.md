@@ -1,10 +1,21 @@
 # mDNS Protocol Overview
 
+## Table of Contents
+
+- [Introduction](#introduction)
+- [History and Motivation](#history-and-motivation)
+- [Core Differences from Traditional DNS](#core-differences-from-traditional-dns)
+- [mDNS Protocol Fundamentals](#mdns-protocol-fundamentals)
+- [Key Operational Behaviors](#key-operational-behaviors)
+- [Summary](#summary)
+
 ## Introduction
 
 Multicast DNS (mDNS) is a protocol that provides DNS-like name resolution capabilities on local networks without requiring a central DNS server. Defined in **RFC 6762**, mDNS operates by having devices multicast queries to their local network and by having devices listening on the network respond with answers from their local zone.
 
 **Key Characteristic**: mDNS uses the `.local` domain suffix to distinguish local-network hostnames from traditional DNS names.
+
+[↑ back to top](#table-of-contents)
 
 ## History and Motivation
 
@@ -18,6 +29,8 @@ mDNS solves these problems by:
 2. Allowing other devices to query for service locations
 3. Requiring zero administrative configuration
 
+[↑ back to top](#table-of-contents)
+
 ## Core Differences from Traditional DNS
 
 | Aspect | Traditional DNS | mDNS |
@@ -29,6 +42,8 @@ mDNS solves these problems by:
 | **Configuration** | Manual setup required | Zero-configuration |
 | **Response Handling** | Single authoritative server | Multiple devices may respond |
 | **Query Port** | UDP port 53 | UDP port 5353 |
+
+[↑ back to top](#table-of-contents)
 
 ## mDNS Protocol Fundamentals
 
@@ -148,6 +163,8 @@ mDNS primarily supports these resource record types:
 | **MX** | 15 | Mail exchange (rarely used in mDNS) |
 | **SOA** | 6 | Start of authority (rarely used in mDNS) |
 
+[↑ back to top](#table-of-contents)
+
 ## Key Operational Behaviors
 
 ### Announcement vs Query
@@ -179,6 +196,8 @@ If a device doesn't have authority for a queried name:
 - Used when query came from unicast
 - Used to avoid network flooding
 - More efficient for repeated queries
+
+[↑ back to top](#table-of-contents)
 
 ## Summary
 

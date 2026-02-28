@@ -2,6 +2,20 @@
 
 This document describes the multicast addresses used by mDNS, how devices join multicast groups, and the networking considerations for mDNS deployment.
 
+## Table of Contents
+
+- [Overview](#overview)
+- [IPv4 Multicast Group](#ipv4-multicast-group)
+- [IPv6 Multicast Group](#ipv6-multicast-group)
+- [Multicast Group Membership](#multicast-group-membership)
+- [Network Interface Binding](#network-interface-binding)
+- [Multicast TTL and Hop Limit](#multicast-ttl-and-hop-limit)
+- [Network Configuration Examples](#network-configuration-examples)
+- [Route and Forwarding](#route-and-forwarding)
+- [Troubleshooting Multicast Connectivity](#troubleshooting-multicast-connectivity)
+- [Special Cases and Considerations](#special-cases-and-considerations)
+- [Summary](#summary)
+
 ## Overview
 
 mDNS operates entirely using **multicast communication**. All devices on a local network listen to a specific multicast address on UDP port 5353, allowing them to participate in the mDNS protocol without a central server.
@@ -59,6 +73,8 @@ Ethernet MAC:   01:00:5E:00:00:FB
   - Result: `01:00:5E:00:00:FB`
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## IPv6 Multicast Group
 
@@ -118,6 +134,8 @@ Ethernet MAC:   33:33:00:00:00:fb
 **mDNS uses ff02 (link-local)**, ensuring packets don't leave the local network.
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Multicast Group Membership
 
@@ -185,6 +203,8 @@ setsockopt(socket, IPPROTO_IPV6, IPV6_DROP_MEMBERSHIP, &mreq6, sizeof(mreq6));
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Network Interface Binding
 
 ### UDP Socket Creation and Binding
@@ -249,6 +269,8 @@ setsockopt(sock6, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex));
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Multicast TTL and Hop Limit
 
 ### Purpose
@@ -288,6 +310,8 @@ setsockopt(sock6, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &hops, sizeof(hops));
 - Packets with hop limit < 1 are dropped
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Network Configuration Examples
 
@@ -379,6 +403,8 @@ Result: Each interface isolated (expected for link-local scope)
 
 ---
 
+[↑ back to top](#table-of-contents)
+
 ## Route and Forwarding
 
 ### Multicast Routing Table
@@ -410,6 +436,8 @@ Result: Packet stays on eth0 segment
 ```
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Troubleshooting Multicast Connectivity
 
@@ -458,6 +486,8 @@ dns-sd -B _services._dns-sd._udp local
 ```
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Special Cases and Considerations
 
@@ -509,6 +539,8 @@ docker run --net bridge \
 ```
 
 ---
+
+[↑ back to top](#table-of-contents)
 
 ## Summary
 
