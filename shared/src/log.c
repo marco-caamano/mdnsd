@@ -60,7 +60,7 @@ int log_init(log_level_t level, int use_syslog) {
     g_use_syslog = use_syslog;
 
     if (g_use_syslog) {
-        openlog("mdnsd", LOG_PID | LOG_NDELAY, LOG_DAEMON);
+        openlog("mdns_server", LOG_PID | LOG_NDELAY, LOG_DAEMON);
     }
 
     return 0;

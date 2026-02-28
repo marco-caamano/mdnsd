@@ -1,6 +1,6 @@
 # Server Documentation
 
-The mDNS server (`mdnsd`) is a responder that listens on a network interface and answers mDNS queries for hostnames and services.
+The mDNS server (`mdns_server`) is a responder that listens on a network interface and answers mDNS queries for hostnames and services.
 
 ## Architecture
 
@@ -119,7 +119,7 @@ The server supports both console and syslog logging with configurable verbosity:
 
 Timestamped output to stderr:
 ```
-2025-02-28 14:32:10 [INFO] mdnsd started on interface eth0 for host myhost
+2025-02-28 14:32:10 [INFO] mdns_server started on interface eth0 for host myhost
 2025-02-28 14:32:10 [INFO] Registered service: Web._http._tcp.local:8080
 ```
 

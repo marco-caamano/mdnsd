@@ -54,7 +54,8 @@ dkms.conf
 # debug information files
 *.dwo
 
-mdnsd
-mdnsc
+mdns_server
+mdns_client
 mdns_browse
+
 

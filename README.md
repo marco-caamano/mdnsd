@@ -1,9 +1,9 @@
-# mDNSd
+# mdns_server
 
 A lightweight IPv6 mDNS (Multicast DNS) implementation in C99, separated into **server** and **client** applications:
 
-- **Server (`mdnsd`)**: Responder that listens on a network interface and responds to mDNS queries
-- **Client (`mdnsc`)**: Query tool for discovering services and resolving hostnames via mDNS
+- **Server (`mdns_server`)**: Responder that listens on a network interface and responds to mDNS queries
+- **Client (`mdns_client`)**: Query tool for discovering services and resolving hostnames via mDNS
 - **Browser (`mdns_browse`)**: Service browser that sends PTR queries and prints discovered responses
 
 ## Features
@@ -35,7 +35,7 @@ A lightweight IPv6 mDNS (Multicast DNS) implementation in C99, separated into **
 make
 ```
 
-This builds both `mdnsd` (server) and `mdnsc` (client) binaries in the repository root.
+This builds both `mdns_server` (server) and `mdns_client` (client) binaries in the repository root.
 It also builds `mdns_browse` (service browser).
 
 ### Build Settings
@@ -65,7 +65,7 @@ The project uses:
 │   │   ├── config.h
 │   │   └── socket.h
 │   └── src/
-│       ├── main.c
+│       ├── mdns_server.c
 │       ├── args.c
 │       ├── config.c
 │       └── socket.c
@@ -73,21 +73,21 @@ The project uses:
 │   ├── include/
 │   │   └── args.h
 │   └── src/
-│       ├── main.c
+│       ├── mdns_client.c
 │       └── args.c
 └── doc/                 # Documentation
     ├── mdns/
     └── server/
 ```
 
-## Server: `mdnsd`
+## Server: `mdns_server`
 
 The mDNS responder listens on a network interface and responds to queries.
 
 ### Usage
 
 ```bash
-mdnsd -i <interface> [-c <config>] [-v ERROR|WARN|INFO|DEBUG] [-l console|syslog]
+mdns_server -i <interface> [-c <config>] [-v ERROR|WARN|INFO|DEBUG] [-l console|syslog]
 ```
 
 ### Options
@@ -102,16 +102,16 @@ mdnsd -i <interface> [-c <config>] [-v ERROR|WARN|INFO|DEBUG] [-l console|syslog
 
 ```bash
 # Run without services
-mdnsd -i eth0
+mdns_server -i eth0
 
 # Run with service discovery
-mdnsd -i eth0 -c services.conf
+mdns_server -i eth0 -c services.conf
 
 # Run with debug logging
-mdnsd -i eth0 -c services.conf -v DEBUG
+mdns_server -i eth0 -c services.conf -v DEBUG
 
 # Run with syslog
-mdnsd -i eth0 -c services.conf -l syslog -v INFO
+mdns_server -i eth0 -c services.conf -l syslog -v INFO
 ```
 
 ### Configuration
@@ -151,14 +151,14 @@ ttl = 120
 - `ttl` - Time to live in seconds (default: 120)
 - `txt.key=value` - TXT records (multiple allowed)
 
-## Client: `mdnsc`
+## Client: `mdns_client`
 
 The mDNS client queries for hostnames and services on the local network.
 
 ### Usage
 
 ```bash
-mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
+mdns_client [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
 ```
 
 ### Options
@@ -177,19 +177,19 @@ mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
 
 ```bash
 # Resolve a hostname
-mdnsc myhost
+mdns_client myhost
 
 # Query for a specific service
-mdnsc -t service "My Web Server._http._tcp.local"
+mdns_client -t service "My Web Server._http._tcp.local"
 
 # Discover all HTTP services
-mdnsc -t service "_http._tcp.local"
+mdns_client -t service "_http._tcp.local"
 
 # IPv6 only query
-mdnsc -6 myhost
+mdns_client -6 myhost
 
 # Verbose output
-mdnsc -v myhost
+mdns_client -v myhost
 ```
 
 ## Browser: `mdns_browse`
@@ -226,7 +226,7 @@ mdns_browse -s _ssh._tcp.local -i eth0
 make install
 ```
 
-This installs `mdnsd` and `mdnsc` to `/usr/local/bin/`.
+This installs `mdns_server` and `mdns_client` to `/usr/local/bin/`.
 It also installs `mdns_browse` to `/usr/local/bin/`.
 
 ## Uninstallation
@@ -269,7 +269,7 @@ In-memory database for hosts and services:
 
 ### Server-Specific Modules
 
-#### `server/src/main.c`
+#### `server/src/mdns_server.c`
 
 Event loop and query handler:
 - Initializes configuration via `parse_args`
@@ -308,7 +308,7 @@ IPv6 mDNS socket setup:
 
 ### Client-Specific Modules
 
-#### `client/src/main.c`
+#### `client/src/mdns_client.c`
 
 Query dispatcher:
 - Creates temporary mDNS socket

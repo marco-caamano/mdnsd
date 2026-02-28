@@ -7,16 +7,16 @@ SERVER_INCLUDES := -Iserver/include $(SHARED_INCLUDES)
 CLIENT_INCLUDES := -Iclient/include $(SHARED_INCLUDES)
 
 SHARED_SRC := shared/src/log.c shared/src/mdns.c shared/src/hostdb.c
-SERVER_SRC := server/src/main.c server/src/args.c server/src/config.c server/src/socket.c $(SHARED_SRC)
-CLIENT_SRC := client/src/main.c client/src/args.c $(SHARED_SRC)
+SERVER_SRC := server/src/mdns_server.c server/src/args.c server/src/config.c server/src/socket.c $(SHARED_SRC)
+CLIENT_SRC := client/src/mdns_client.c client/src/args.c $(SHARED_SRC)
 BROWSE_SRC := client/src/mdns_browse.c shared/src/log.c
 
 SERVER_OBJ := $(patsubst %.c,build/%.o,$(SERVER_SRC))
 CLIENT_OBJ := $(patsubst %.c,build/%.o,$(CLIENT_SRC))
 BROWSE_OBJ := $(patsubst %.c,build/%.o,$(BROWSE_SRC))
 
-SERVER_TARGET := mdnsd
-CLIENT_TARGET := mdnsc
+SERVER_TARGET := mdns_server
+CLIENT_TARGET := mdns_client
 BROWSE_TARGET := mdns_browse
 
 .PHONY: all clean install uninstall

@@ -2,7 +2,7 @@
 
 The mDNS client tools are query and browse utilities for local mDNS discovery:
 
-- `mdnsc`: single-shot hostname/service query tool
+- `mdns_client`: single-shot hostname/service query tool
 - `mdns_browse`: service-type browser that sends PTR queries and prints responses during a timeout window
 
 ## Overview
@@ -20,7 +20,7 @@ The browser performs service-type browsing for:
 ## Usage
 
 ```bash
-mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
+mdns_client [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
 ```
 
 ```bash
@@ -53,7 +53,7 @@ mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
 Resolve a hostname to its IPv4 and IPv6 addresses:
 
 ```bash
-$ mdnsc myhost
+$ mdns_client myhost
 Response from [ipv6-address]:
   Query target: myhost
   Query type: 1
@@ -64,7 +64,7 @@ Response from [ipv6-address]:
 Query for IPv6 address only:
 
 ```bash
-$ mdnsc -6 myhost
+$ mdns_client -6 myhost
 ```
 
 ### Service Discovery
@@ -72,13 +72,13 @@ $ mdnsc -6 myhost
 Query for a specific service by FQDN:
 
 ```bash
-$ mdnsc -t service "My Web Server._http._tcp.local"
+$ mdns_client -t service "My Web Server._http._tcp.local"
 ```
 
 Discover all services of a type:
 
 ```bash
-$ mdnsc -t service "_http._tcp.local"
+$ mdns_client -t service "_http._tcp.local"
 ```
 
 ### Verbose Output
@@ -86,7 +86,7 @@ $ mdnsc -t service "_http._tcp.local"
 Get detailed information about queries:
 
 ```bash
-$ mdnsc -v myhost
+$ mdns_client -v myhost
 [INFO] Querying for: myhost
 [INFO] Query sent, waiting for responses...
 Response from [ipv6-address]:
@@ -99,7 +99,7 @@ Response from [ipv6-address]:
 IPv4-only query with verbose output:
 
 ```bash
-$ mdnsc -4 -v myhost
+$ mdns_client -4 -v myhost
 ```
 
 ### Service Browsing
@@ -183,10 +183,10 @@ The client processes responses by:
 ## Limitations
 
 - Single query per invocation
-- `mdnsc` waits only 1 second for response (fixed timeout)
+- `mdns_client` waits only 1 second for response (fixed timeout)
 - `mdns_browse` timeout is configurable with `-w`
 - Limited response parsing (prints sender only)
-- `mdnsc` does not cache or filter multiple responses
+- `mdns_client` does not cache or filter multiple responses
 - Only queries local link (ff02::fb scope)
 
 ## Comparison with `dig`
@@ -197,11 +197,11 @@ For more detailed DNS query results, you can use `dig`:
 # Query using dig
 dig @ff02::fb%eth0 -p 5353 myhost.local AAAA
 
-# vs using mdnsc
-mdnsc myhost
+# vs using mdns_client
+mdns_client myhost
 ```
 
-The `dig` tool provides more detailed parsing and can query specific servers, while `mdnsc` is a simpler tool focused on basic mDNS discovery.
+The `dig` tool provides more detailed parsing and can query specific servers, while `mdns_client` is a simpler tool focused on basic mDNS discovery.
 
 ## Troubleshooting
 
@@ -209,13 +209,13 @@ The `dig` tool provides more detailed parsing and can query specific servers, wh
 
 1. Verify IPv6 connectivity: `ping6 ff02::fb%eth0`
 2. Check server is running and binding to the same scope
-3. Try with verbose flag: `mdnsc -v <target>`
+3. Try with verbose flag: `mdns_client -v <target>`
 4. Test with dig: `dig @ff02::fb%eth0 -p 5353 <target>`
 
 ### Service not found
 
 1. Query with correct service type format: `_service._protocol.local`
-2. Check service is registered on server: `mdnsd -v DEBUG`
+2. Check service is registered on server: `mdns_server -v DEBUG`
 3. Query correct domain (default is `.local`)
 
 ### Permission denied
@@ -224,5 +224,5 @@ Some systems require appropriate permissions to send to multicast groups:
 
 ```bash
 # For non-root users, may need:
-sudo mdnsc myhost
+sudo mdns_client myhost
 ```

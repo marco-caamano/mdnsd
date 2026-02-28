@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
 
-    log_info("mdnsd started on interface %s for host %s", cfg.interface_name, local_record.hostname);
+    log_info("mdns_server started on interface %s for host %s", cfg.interface_name, local_record.hostname);
 
     while (g_running) {
         fd_set rfds;
@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    log_info("mdnsd shutting down");
+    log_info("mdns_server shutting down");
     mdns_socket_close(sockfd);
     mdns_cleanup_services();
     log_close();
