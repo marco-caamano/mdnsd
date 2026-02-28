@@ -1,6 +1,7 @@
 #include "mdns.h"
 
 #include <arpa/inet.h>
+#include <stdio.h>
 #include <string.h>
 
 #define DNS_FLAG_QR_RESPONSE 0x8000
@@ -184,4 +185,176 @@ int mdns_build_response(uint8_t *out, size_t out_len, const dns_question_t *ques
     write_u16(&out[6], answers);
 
     return (int)offset;
+}
+
+// Helper: Write answer header (name, type, class, ttl, rdlength placeholder)
+// Returns offset to write RDATA, or -1 on error
+static int write_answer_header(uint8_t *out, size_t out_len, size_t *offset,
+                                const char *name, uint16_t type, uint32_t ttl) {
+    size_t qname_len;
+    
+    // Write name
+    if (encode_qname(name, &out[*offset], out_len - *offset, &qname_len) != 0) {
+        return -1;
+    }
+    *offset += qname_len;
+    
+    // Write TYPE, CLASS, TTL, RDLENGTH placeholder
+    if (*offset + 10 > out_len) {
+        return -1;
+    }
+    
+    write_u16(&out[*offset], type);
+    write_u16(&out[*offset + 2], DNS_CLASS_IN);
+    write_u32(&out[*offset + 4], ttl);
+    *offset += 8;
+    
+    // Return position for RDLENGTH
+    return (int)*offset;
+}
+
+// Helper: Encode SRV record RDATA
+static int encode_srv_rdata(uint8_t *out, size_t out_len, size_t *offset,
+                             const mdns_service_t *svc) {
+    size_t target_len;
+    
+    // Check space for priority, weight, port
+    if (*offset + 6 > out_len) {
+        return -1;
+    }
+    
+    write_u16(&out[*offset], svc->priority);
+    write_u16(&out[*offset + 2], svc->weight);
+    write_u16(&out[*offset + 4], svc->port);
+    *offset += 6;
+    
+    // Encode target hostname
+    if (encode_qname(svc->target_host, &out[*offset], out_len - *offset, &target_len) != 0) {
+        return -1;
+    }
+    *offset += target_len;
+    
+    return 0;
+}
+
+// Helper: Encode TXT record RDATA
+static int encode_txt_rdata(uint8_t *out, size_t out_len, size_t *offset,
+                             const mdns_service_t *svc) {
+    // If no TXT records, write a single empty string (length 0)
+    if (svc->txt_kv_count == 0 || svc->txt_kv == NULL) {
+        if (*offset + 1 > out_len) {
+            return -1;
+        }
+        out[(*offset)++] = 0;
+        return 0;
+    }
+    
+    // Write each TXT record as length-prefixed string
+    for (size_t i = 0; i < svc->txt_kv_count; i++) {
+        size_t txt_len = strlen(svc->txt_kv[i]);
+        if (txt_len > 255) {
+            txt_len = 255;  // Truncate if too long
+        }
+        
+        if (*offset + 1 + txt_len > out_len) {
+            return -1;
+        }
+        
+        out[(*offset)++] = (uint8_t)txt_len;
+        memcpy(&out[*offset], svc->txt_kv[i], txt_len);
+        *offset += txt_len;
+    }
+    
+    return 0;
+}
+
+// Build service response with SRV + TXT records for each service
+int mdns_build_service_response(uint8_t *out, size_t out_len, const dns_question_t *question,
+                                 mdns_service_t **services, size_t service_count) {
+    size_t qname_len;
+    size_t offset;
+    uint16_t answer_count = 0;
+    
+    if (out == NULL || question == NULL || out_len < 12) {
+        return -1;
+    }
+    
+    if (service_count == 0 || services == NULL) {
+        return 0;  // No services to return
+    }
+    
+    // DNS header
+    memset(out, 0, out_len);
+    write_u16(&out[0], 0);  // ID
+    write_u16(&out[2], DNS_FLAG_QR_RESPONSE | DNS_FLAG_AA);
+    write_u16(&out[4], 1);  // QDCOUNT
+    
+    // Question section
+    offset = 12;
+    if (encode_qname(question->name, &out[offset], out_len - offset, &qname_len) != 0) {
+        return -1;
+    }
+    offset += qname_len;
+    
+    if (offset + 4 > out_len) {
+        return -1;
+    }
+    write_u16(&out[offset], question->qtype);
+    write_u16(&out[offset + 2], DNS_CLASS_IN);
+    offset += 4;
+    
+    // Answer section: SRV + TXT for each service
+    for (size_t i = 0; i < service_count; i++) {
+        mdns_service_t *svc = services[i];
+        char service_fqdn[512];
+        int rdlength_pos;
+        size_t rdata_start;
+        size_t rdata_len;
+        
+        // Construct service FQDN
+        int written = snprintf(service_fqdn, sizeof(service_fqdn), "%s.%s.%s",
+                              svc->instance, svc->service_type, svc->domain);
+        if (written < 0 || (size_t)written >= sizeof(service_fqdn)) {
+            continue;  // Skip this service
+        }
+        
+        // Write SRV record
+        rdlength_pos = write_answer_header(out, out_len, &offset, service_fqdn,
+                                           DNS_TYPE_SRV, svc->ttl);
+        if (rdlength_pos < 0) {
+            break;  // Out of space
+        }
+        
+        rdata_start = offset;
+        if (encode_srv_rdata(out, out_len, &offset, svc) != 0) {
+            break;  // Out of space
+        }
+        
+        // Fill in RDLENGTH
+        rdata_len = offset - rdata_start;
+        write_u16(&out[rdlength_pos], (uint16_t)rdata_len);
+        answer_count++;
+        
+        // Write TXT record
+        rdlength_pos = write_answer_header(out, out_len, &offset, service_fqdn,
+                                           DNS_TYPE_TXT, svc->ttl);
+        if (rdlength_pos < 0) {
+            break;  // Out of space
+        }
+        
+        rdata_start = offset;
+        if (encode_txt_rdata(out, out_len, &offset, svc) != 0) {
+            break;  // Out of space
+        }
+        
+        // Fill in RDLENGTH
+        rdata_len = offset - rdata_start;
+        write_u16(&out[rdlength_pos], (uint16_t)rdata_len);
+        answer_count++;
+    }
+    
+    // Update ANCOUNT
+    write_u16(&out[6], answer_count);
+    
+    return answer_count > 0 ? (int)offset : 0;
 }

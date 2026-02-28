@@ -7,9 +7,10 @@
 
 void print_usage(const char *progname) {
     fprintf(stderr,
-            "Usage: %s -i <interface> [-v <ERROR|WARN|INFO|DEBUG>] [-l <console|syslog>]\n"
+            "Usage: %s -i <interface> [-c <config>] [-v <ERROR|WARN|INFO|DEBUG>] [-l <console|syslog>]\n"
             "Options:\n"
             "  -i, --interface   Network interface name (required)\n"
+            "  -c, --config      Config file path for service definitions\n"
             "  -v, --verbosity   Log verbosity level (default: WARN)\n"
             "  -l, --log         Log target: console or syslog (default: console)\n"
             "  -h, --help        Show this help\n",
@@ -19,6 +20,7 @@ void print_usage(const char *progname) {
 int parse_args(int argc, char **argv, app_config_t *cfg) {
     static struct option long_opts[] = {
         {"interface", required_argument, 0, 'i'},
+        {"config", required_argument, 0, 'c'},
         {"verbosity", required_argument, 0, 'v'},
         {"log", required_argument, 0, 'l'},
         {"help", no_argument, 0, 'h'},
@@ -32,13 +34,17 @@ int parse_args(int argc, char **argv, app_config_t *cfg) {
     }
 
     cfg->interface_name = NULL;
+    cfg->config_path = NULL;
     cfg->verbosity = APP_LOG_WARN;
     cfg->log_target = LOG_TARGET_CONSOLE;
 
-    while ((opt = getopt_long(argc, argv, "i:v:l:h", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:c:v:l:h", long_opts, NULL)) != -1) {
         switch (opt) {
             case 'i':
                 cfg->interface_name = optarg;
+                break;
+            case 'c':
+                cfg->config_path = optarg;
                 break;
             case 'v':
                 if (parse_log_level(optarg, &cfg->verbosity) != 0) {

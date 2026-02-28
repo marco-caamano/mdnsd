@@ -12,6 +12,7 @@ typedef struct {
     const char *interface_name;
     log_level_t verbosity;
     log_target_t log_target;
+    const char *config_path;
 } app_config_t;
 
 int parse_args(int argc, char **argv, app_config_t *cfg);

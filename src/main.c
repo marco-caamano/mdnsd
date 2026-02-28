@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "args.h"
+#include "config.h"
 #include "hostdb.h"
 #include "log.h"
 #include "mdns.h"
@@ -22,7 +23,66 @@ static void on_signal(int signo) {
 }
 
 static int is_supported_query_type(uint16_t qtype) {
-    return (qtype == DNS_TYPE_A || qtype == DNS_TYPE_AAAA);
+    return (qtype == DNS_TYPE_A || qtype == DNS_TYPE_AAAA || qtype == DNS_TYPE_SRV);
+}
+
+// Parse service type from query name.
+// Returns 0 if it looks like a general service query (_service._proto.domain)
+// Returns 1 if it looks like a targeted instance query
+static int is_general_service_query(const char *qname) {
+    // General service queries start with underscore
+    return (qname[0] == '_');
+}
+
+// Extract service type and domain from general query name
+// E.g., "_http._tcp.local" -> service_type="_http._tcp", domain="local"
+static int parse_service_type_query(const char *qname, char *service_type,
+                                     size_t st_len, char *domain, size_t dom_len) {
+    const char *second_dot;
+    const char *third_dot;
+    
+    if (qname[0] != '_') {
+        return -1;
+    }
+    
+    // Find second underscore/dot
+    second_dot = strchr(qname + 1, '.');
+    if (second_dot == NULL) {
+        return -1;
+    }
+    
+    // Check if next part starts with underscore
+    if (second_dot[1] != '_') {
+        return -1;
+    }
+    
+    // Find the dot after _tcp or _udp
+    third_dot = strchr(second_dot + 1, '.');
+    if (third_dot == NULL) {
+        return -1;
+    }
+    
+    // Extract service type
+    size_t st_size = (size_t)(third_dot - qname);
+    if (st_size >= st_len) {
+        return -1;
+    }
+    memcpy(service_type, qname, st_size);
+    service_type[st_size] = '\0';
+    
+    // Extract domain (rest after third dot)
+    size_t dom_size = strlen(third_dot + 1);
+    if (dom_size >= dom_len) {
+        return -1;
+    }
+    strcpy(domain, third_dot + 1);
+    
+    // Remove trailing dot if present
+    if (dom_size > 0 && domain[dom_size - 1] == '.') {
+        domain[dom_size - 1] = '\0';
+    }
+    
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -44,6 +104,13 @@ int main(int argc, char **argv) {
         log_error("Failed to initialize host database");
         log_close();
         return 1;
+    }
+
+    if (cfg.config_path != NULL) {
+        int loaded = config_load_services(cfg.config_path);
+        if (loaded < 0) {
+            log_warn("Could not load config file, continuing without services");
+        }
     }
 
     sockfd = mdns_socket_open(cfg.interface_name);
@@ -106,12 +173,13 @@ int main(int argc, char **argv) {
                 continue;
             }
 
-            if (hostdb_lookup(&local_record, question.name, &match) != 1) {
-                log_debug("No match for qname %s", question.name);
-                continue;
-            }
+            // Handle A/AAAA queries
+            if (question.qtype == DNS_TYPE_A || question.qtype == DNS_TYPE_AAAA) {
+                if (hostdb_lookup(&local_record, question.name, &match) != 1) {
+                    log_debug("No match for qname %s", question.name);
+                    continue;
+                }
 
-            {
                 int out_len;
                 ssize_t sent;
 
@@ -127,11 +195,58 @@ int main(int argc, char **argv) {
                     log_info("Answered %s type %u", question.name, question.qtype);
                 }
             }
+            // Handle SRV queries
+            else if (question.qtype == DNS_TYPE_SRV) {
+                mdns_service_t *services[32];
+                size_t service_count = 0;
+                int out_len;
+                ssize_t sent;
+                
+                if (is_general_service_query(question.name)) {
+                    // General query: return all services of this type
+                    char service_type[256];
+                    char domain[256];
+                    
+                    if (parse_service_type_query(question.name, service_type,
+                                                 sizeof(service_type), domain,
+                                                 sizeof(domain)) == 0) {
+                        service_count = mdns_find_services_by_type(service_type, domain,
+                                                                   services, 32);
+                    }
+                } else {
+                    // Targeted query: return specific instance
+                    mdns_service_t *svc = mdns_find_service_by_fqdn(question.name);
+                    if (svc != NULL) {
+                        services[0] = svc;
+                        service_count = 1;
+                    }
+                }
+                
+                if (service_count == 0) {
+                    log_debug("No service match for %s", question.name);
+                    continue;
+                }
+                
+                out_len = mdns_build_service_response(out_buf, sizeof(out_buf),
+                                                      &question, services, service_count);
+                if (out_len <= 0) {
+                    continue;
+                }
+                
+                sent = sendto(sockfd, out_buf, (size_t)out_len, 0,
+                             (struct sockaddr *)&src_addr, src_len);
+                if (sent < 0) {
+                    log_warn("sendto failed: %s", strerror(errno));
+                } else {
+                    log_info("Answered %s SRV with %zu service(s)", question.name, service_count);
+                }
+            }
         }
     }
 
     log_info("mdnsd shutting down");
     mdns_socket_close(sockfd);
+    mdns_cleanup_services();
     log_close();
     return 0;
 }
