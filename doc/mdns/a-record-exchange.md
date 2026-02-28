@@ -6,9 +6,21 @@ This document walks through a complete mDNS A-record query and response exchange
 
 - [Setting the Scene](#setting-the-scene)
 - [Complete Exchange Flow](#complete-exchange-flow)
+  - [Stage 1: Client Preparation](#stage-1-client-preparation)
+  - [Stage 2: Query Packet Construction](#stage-2-query-packet-construction)
+  - [Stage 3: Query Transmission](#stage-3-query-transmission)
+  - [Stage 4: Network Delivery](#stage-4-network-delivery)
+  - [Stage 5: Server-Side Processing](#stage-5-server-side-processing)
+  - [Stage 6: Response Construction](#stage-6-response-construction)
+  - [Stage 7: Response Transmission](#stage-7-response-transmission)
+  - [Stage 8: Client Reception and Processing](#stage-8-client-reception-and-processing)
+  - [Stage 9: Application Delivery](#stage-9-application-delivery)
 - [Complete Timeline](#complete-timeline)
 - [Key Observations](#key-observations)
 - [Variations and Edge Cases](#variations-and-edge-cases)
+  - [Unicast Response Requested](#unicast-response-requested)
+  - [AAAA Record (IPv6) Query/Response](#aaaa-record-ipv6-queryresponse)
+  - [No Response Scenario](#no-response-scenario)
 - [Summary](#summary)
 
 ## Setting the Scene

@@ -6,7 +6,18 @@
 - [History and Motivation](#history-and-motivation)
 - [Core Differences from Traditional DNS](#core-differences-from-traditional-dns)
 - [mDNS Protocol Fundamentals](#mdns-protocol-fundamentals)
+  - [Multicast Communication](#multicast-communication)
+  - [Local Domain Convention](#local-domain-convention)
+  - [Query and Response Mechanism](#query-and-response-mechanism)
+  - [Known-Answer Suppression](#known-answer-suppression)
+  - [Response Timing and Delays](#response-timing-and-delays)
+  - [TTL (Time-To-Live) Handling](#ttl-time-to-live-handling)
+  - [Conflict Resolution](#conflict-resolution)
+  - [Resource Record Types](#resource-record-types)
 - [Key Operational Behaviors](#key-operational-behaviors)
+  - [Announcement vs Query](#announcement-vs-query)
+  - [Negative Responses](#negative-responses)
+  - [Multicast Response vs Unicast Response](#multicast-response-vs-unicast-response)
 - [Summary](#summary)
 
 ## Introduction

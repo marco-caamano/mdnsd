@@ -5,9 +5,21 @@ This document covers the different types of mDNS messages, their purposes, and t
 ## Table of Contents
 
 - [Message Types](#message-types)
+  - [Query Messages (QR = 0)](#query-messages-qr--0)
+  - [Response Messages (QR = 1)](#response-messages-qr--1)
 - [Resource Record (RR) Types](#resource-record-rr-types)
+  - [Address Records](#address-records)
+  - [Service Discovery Records](#service-discovery-records)
+  - [Other Common Records](#other-common-records)
 - [Query and Response Scenarios](#query-and-response-scenarios)
+  - [Scenario 1: Simple Address Lookup](#scenario-1-simple-address-lookup)
+  - [Scenario 2: Service Discovery](#scenario-2-service-discovery)
+  - [Scenario 3: Unicast Response Requested](#scenario-3-unicast-response-requested)
+  - [Scenario 4: Known-Answer Suppression](#scenario-4-known-answer-suppression)
 - [Response Rules (RFC 6762)](#response-rules-rfc-6762)
+  - [When to Respond](#when-to-respond)
+  - [Response Timing](#response-timing)
+  - [Cache Flush Behavior](#cache-flush-behavior)
 - [Summary Table: Common Record Types](#summary-table-common-record-types)
 
 ## Message Types
