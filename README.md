@@ -158,7 +158,7 @@ The mDNS client queries for hostnames and services on the local network.
 ### Usage
 
 ```bash
-mdns_client [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
+mdns_client [-t hostname|service|ipv4|ipv6] [-i <interface>] [-4|-6] [-v] <query-target>
 ```
 
 ### Options
@@ -168,6 +168,7 @@ mdns_client [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
   - `service` - discover service by FQDN or type
   - `ipv4` - query for IPv4 address only
   - `ipv6` - query for IPv6 address only
+- `-i, --interface`: Network interface name (optional, default: use all interfaces)
 - `-4, --ipv4`: IPv4 only (A records)
 - `-6, --ipv6`: IPv6 only (AAAA records)
 - `-v, --verbose`: Verbose output
@@ -179,11 +180,14 @@ mdns_client [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
 # Resolve a hostname
 mdns_client myhost
 
+# Resolve using a specific interface
+mdns_client -i eth0 myhost
+
 # Query for a specific service
 mdns_client -t service "My Web Server._http._tcp.local"
 
-# Discover all HTTP services
-mdns_client -t service "_http._tcp.local"
+# Discover all HTTP services on wlan0 interface
+mdns_client -i wlan0 -t service "_http._tcp.local"
 
 # IPv6 only query
 mdns_client -6 myhost

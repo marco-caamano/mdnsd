@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <net/if.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,6 +129,28 @@ int main(int argc, char **argv) {
         close(sockfd);
         log_close();
         return 1;
+    }
+
+    // Set multicast interface if specified
+    if (cfg.interface_name != NULL) {
+        unsigned int ifindex = if_nametoindex(cfg.interface_name);
+        if (ifindex == 0) {
+            log_error("Invalid interface: %s", cfg.interface_name);
+            close(sockfd);
+            log_close();
+            return 1;
+        }
+        
+        if (setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &ifindex, sizeof(ifindex)) < 0) {
+            log_error("Failed to set multicast interface");
+            close(sockfd);
+            log_close();
+            return 1;
+        }
+        
+        if (cfg.verbose) {
+            log_info("Using interface: %s (index %u)", cfg.interface_name, ifindex);
+        }
     }
 
     if (cfg.verbose) {

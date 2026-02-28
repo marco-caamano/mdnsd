@@ -13,6 +13,7 @@ typedef enum {
 typedef struct {
     query_type_t query_type;
     const char *query_target;  // hostname, service FQDN, or service type
+    const char *interface_name;  // network interface name (optional)
     int verbose;
     log_level_t verbosity;
     int ipv4_only;

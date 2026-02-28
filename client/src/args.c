@@ -13,6 +13,7 @@ void print_usage(const char *progname) {
             "Options:\n"
             "  <query>           Hostname or service FQDN to resolve (default: A/AAAA lookup)\n"
             "  -t, --type        Query type: hostname|service|ipv4|ipv6 (default: hostname)\n"
+            "  -i, --interface   Network interface name (optional)\n"
             "  -4, --ipv4        IPv4 only (A records)\n"
             "  -6, --ipv6        IPv6 only (AAAA records)\n"
             "  -v, --verbose     Verbose output\n"
@@ -23,6 +24,7 @@ void print_usage(const char *progname) {
 int parse_args(int argc, char **argv, client_config_t *cfg) {
     static struct option long_opts[] = {
         {"type", required_argument, 0, 't'},
+        {"interface", required_argument, 0, 'i'},
         {"ipv4", no_argument, 0, '4'},
         {"ipv6", no_argument, 0, '6'},
         {"verbose", no_argument, 0, 'v'},
@@ -39,12 +41,13 @@ int parse_args(int argc, char **argv, client_config_t *cfg) {
     // Set defaults
     cfg->query_type = QUERY_TYPE_HOSTNAME;
     cfg->query_target = NULL;
+    cfg->interface_name = NULL;
     cfg->verbose = 0;
     cfg->verbosity = APP_LOG_WARN;
     cfg->ipv4_only = 0;
     cfg->ipv6_only = 0;
 
-    while ((opt = getopt_long(argc, argv, "t:46vh", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "t:i:46vh", long_opts, NULL)) != -1) {
         switch (opt) {
             case 't':
                 if (strcmp(optarg, "hostname") == 0) {
@@ -59,6 +62,9 @@ int parse_args(int argc, char **argv, client_config_t *cfg) {
                     fprintf(stderr, "Invalid query type: %s\n", optarg);
                     return -1;
                 }
+                break;
+            case 'i':
+                cfg->interface_name = optarg;
                 break;
             case '4':
                 cfg->ipv4_only = 1;
