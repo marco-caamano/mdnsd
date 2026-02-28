@@ -64,18 +64,18 @@ QUERY PACKET (33 bytes total)
   8-9     Authority Count          0x0000      0 authority records
   10-11   Additional Count         0x0000      0 additional records
 
-[QUESTION SECTION - 21 bytes]
+[QUESTION SECTION - 22 bytes]
   Offset  Field Name               Value       Meaning
   ──────  ──────────────────────   ───────────────────────
-  12      QNAME Label 1 Length     0x09        "homeserver" = 9 chars
-  13-21   QNAME Label 1 Data       homeserver  The text "homeserver"
-  22      QNAME Label 2 Length     0x05        "local" = 5 chars
-  23-27   QNAME Label 2 Data       local       The text "local"
-  28      QNAME Root Label         0x00        End of name
-  29-30   QTYPE                    0x0001      A record (IPv4)
-  31-32   QCLASS                   0x0001      IN (Internet, multicast OK)
+  12      QNAME Label 1 Length     0x0A        "homeserver" = 10 chars
+  13-22   QNAME Label 1 Data       homeserver  The text "homeserver"
+  23      QNAME Label 2 Length     0x05        "local" = 5 chars
+  24-28   QNAME Label 2 Data       local       The text "local"
+  29      QNAME Root Label         0x00        End of name
+  30-31   QTYPE                    0x0001      A record (IPv4)
+  32-33   QCLASS                   0x0001      IN (Internet, multicast OK)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total: 33 bytes
+Total: 34 bytes
 ```
 
 #### Raw Hex Representation
@@ -88,7 +88,7 @@ Total: 33 bytes
 00 00               <- Authority Count = 0
 00 00               <- Additional Count = 0
 
-09                  <- QNAME: "homeserver" length = 9
+0A                  <- QNAME: "homeserver" length = 10
 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver" ASCII
 05                  <- "local" length = 5
 6c 6f 63 61 6c      <- "local" ASCII
@@ -257,42 +257,42 @@ RESPONSE PACKET (41 bytes total)
   8-9     Authority Count          0x0000      0 authority
   10-11   Additional Count         0x0000      0 additional
 
-[QUESTION SECTION - 17 bytes] (echoed from query)
+[QUESTION SECTION - 22 bytes] (echoed from query)
   Offset  Field Name               Value       Meaning
   ──────  ──────────────────────   ───────────────────────
-  12      QNAME Label 1 Length     0x09        "homeserver"
-  13-21   QNAME Label 1 Data       homeserver  Text
-  22      QNAME Label 2 Length     0x05        "local"
-  23-27   QNAME Label 2 Data       local       Text
-  28      QNAME Root               0x00        End
-  29-30   QTYPE (echo)             0x0001      A record
-  31-32   QCLASS (echo)            0x0001      IN
+  12      QNAME Label 1 Length     0x0A        "homeserver"
+  13-22   QNAME Label 1 Data       homeserver  Text
+  23      QNAME Label 2 Length     0x05        "local"
+  24-28   QNAME Label 2 Data       local       Text
+  29      QNAME Root               0x00        End
+  30-31   QTYPE (echo)             0x0001      A record
+  32-33   QCLASS (echo)            0x0001      IN
 
-[ANSWER SECTION - 12 bytes]
+[ANSWER SECTION - 16 bytes]
   Offset  Field Name               Value       Meaning
   ──────  ──────────────────────   ───────────────────────
-  33-34   NAME (compressed)        0xC00C      Pointer to offset 12
+  34-35   NAME (compressed)        0xC00C      Pointer to offset 12
                                                (reuse question name)
-  35-36   TYPE                     0x0001      A record
-  37-38   CLASS                    0x0001      IN (no cache flush)
-  39-42   TTL                      0x00000078  120 seconds
-  43-44   RDLEN                    0x0004      4 bytes of data
-  45-48   RDATA                    0xC0A80164  192.168.1.100
+  36-37   TYPE                     0x0001      A record
+  38-39   CLASS                    0x0001      IN (no cache flush)
+  40-43   TTL                      0x00000078  120 seconds
+  44-45   RDLEN                    0x0004      4 bytes of data
+  46-49   RDATA                    0xC0A80164  192.168.1.100
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Total: 49 bytes
+Total: 50 bytes
 ```
 
 **Name Compression Explanation**:
 ```
-In the query section (bytes 12-28), the server defined the name:
-  12:  0x09 "homeserver" 0x05 "local" 0x00
+In the query section (bytes 12-29), the server defined the name:
+  12:  0x0A "homeserver" 0x05 "local" 0x00
 
 In the answer section, instead of repeating "homeserver.local",
 the server uses a pointer: 0xC00C
   0xC0 (11000000 binary) = "this is a pointer"
   0x0C (00001100 binary) = offset 12
 
-This saves 17 bytes for each answer using the same name!
+This saves 16 bytes for each answer using the same name (18-byte name replaced by a 2-byte pointer)!
 ```
 
 #### Raw Hex Representation
@@ -305,7 +305,7 @@ This saves 17 bytes for each answer using the same name!
 00 00               <- Authority Count = 0
 00 00               <- Additional Count = 0
 
-09                  <- QNAME Label 1 length = 9
+0A                  <- QNAME Label 1 length = 10
 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver"
 05                  <- QNAME Label 2 length = 5
 6c 6f 63 61 6c      <- "local"
@@ -397,7 +397,7 @@ The client receives and processes the response packet.
 
 ```
 Client Socket: Listening on UDP port 54321 (ephemeral)
-Receives: 49-byte response from 192.168.1.100:5353
+Receives: 50-byte response from 192.168.1.100:5353
 ```
 
 #### Step 8.2: Packet Parsing
@@ -472,7 +472,7 @@ Time    Event                                           Duration
         └─ Prepares response
 
 15ms    Homeserver initiates response
-        └─ Sends 49-byte UDP packet unicast
+  └─ Sends 50-byte UDP packet unicast
 
 20ms    Client receives response on UDP 54321
         └─ Network propagation: ~1-2ms
@@ -499,7 +499,7 @@ Time    Event                                           Duration
 
 ### 2. Name Compression
 - Response reuses question's name with pointer (0xC00C)
-- Saves 17 bytes per answer in typical cases
+- Saves 16 bytes per answer in this example (18-byte name → 2-byte pointer)
 - Can support multiple answers efficiently
 
 ### 3. Authority Flag (AA=1)

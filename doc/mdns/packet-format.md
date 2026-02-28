@@ -28,7 +28,7 @@ An mDNS packet consists of **five sections** (though not all may be present):
 
 ---
 
-## Section 1: DNS Header (12 bytes)
+## Section 1: mDNS Header (DNS Wire Format, 12 bytes)
 
 ### Quick Reference Table
 
@@ -44,7 +44,7 @@ An mDNS packet consists of **five sections** (though not all may be present):
 ### Detailed Bit-Field Diagram
 
 ```
-                    DNS HEADER (12 bytes total)
+                    mDNS HEADER (DNS wire format, 12 bytes)
 
      Byte 0              Byte 1              Byte 2              Byte 3
   0 1 2 3 4 5 6 7   0 1 2 3 4 5 6 7   0 1 2 3 4 5 6 7   0 1 2 3 4 5 6 7
@@ -149,7 +149,7 @@ Question Section Format (repeats for each question):
 ┌─────────────────────────────────────────────────────┐
 │  QNAME (Variable length, compressed format)         │
 │  Example: "homeserver.local"                        │
-│  Encoded: [9]homeserver[5]local[0]                  │
+│  Encoded: [10]homeserver[5]local[0]                 │
 ├─────────────────────────────────────────────────────┤
 │  QTYPE (2 bytes)                                    │
 │  Example: 0x0001 = A record (IPv4 address)         │
@@ -167,18 +167,24 @@ DNS uses a **label-based compression scheme** to encode domain names:
 #### Uncompressed Format (Used in Question Section):
 
 ```
-Byte:  0      1-9          10   11-15        16
+Byte:  0      1-10         11   12-16        17
      ┌──┬──────────────┬──┬──────────────┬──┐
-     │09│homeserver    │05│local         │00│
+  │0A│homeserver    │05│local         │00│
      └──┴──────────────┴──┴──────────────┴──┘
      Length "homeserver" Length "local"   0=END
 ```
 
 **Encoding Rules**:
-- Each label begins with a **length byte** (0x01-0x3F)
+- Each label begins with a **length byte** (0x01-0x3F for normal labels)
 - Followed by the ASCII characters of that label
 - Root label (final label) is a single zero byte (0x00)
-- Example: `homeserver.local` → `[0x09]homeserver[0x05]local[0x00]`
+- Example: `homeserver.local` → `[0x0A]homeserver[0x05]local[0x00]`
+
+First-octet ranges in DNS names:
+- `0x00`: root/end of name
+- `0x01-0x3F`: normal label length (1-63 bytes)
+- `0x40-0xBF`: reserved/extended label encodings (not normal mDNS labels)
+- `0xC0-0xFF`: compression pointer indicator
 
 #### Compressed Format (Used in Answer/Authority/Additional Sections):
 
@@ -200,17 +206,46 @@ Example: 0xC00C = pointer to offset 12
 **Pointer Rules**:
 - If the first byte of a name label has bits 7-6 set to `11` binary, it's a **pointer**
 - The remaining 14 bits specify the **offset** into the packet where the actual name is located
-- Pointer `0xC00C` points to byte 12 (start of previous question)
+- Pointer offsets are absolute from the **start of the DNS/mDNS message** (byte 0)
+- Pointer `0xC00C` points to byte 12, which is in the **Question section** (start of QNAME)
 
 **Example** (Response with compressed Name):
 ```
-Question section:
-  [0x09]homeserver[0x05]local[0x00]  (bytes 0-16)
+Packet byte map:
+  0-11   Header
+  12-29  Question QNAME = [0x0A]homeserver[0x05]local[0x00]
+  30-31  QTYPE
+  32-33  QCLASS
+  34-35  Answer NAME (compressed)
   
 Answer section (compressed):
-  [0xC0][0x0C]      <- pointer to offset 12 (skips "c00c" and "local")
+  [0xC0][0x0C]      <- pointer to absolute offset 12 (Question QNAME start)
   [Type][Class]...
+
+Space saving in this example:
+  Uncompressed NAME in answer: 18 bytes ([0x0A]homeserver[0x05]local[0x00])
+  Compressed NAME (pointer):     2 bytes ([0xC0][0x0C])
+  Saved per answer RR:          16 bytes
 ```
+
+How the decoder resolves `0xC00C`:
+1. Read first NAME octet in answer: `0xC0` (`11xxxxxx` means "pointer")
+2. Combine with next octet `0x0C` → pointer value `0xC00C`
+3. Mask top two bits (`0x3FFF`) → offset `0x000C` (decimal 12)
+4. Jump to byte 12 in the same packet and read labels until `0x00`
+5. Resulting NAME is `homeserver.local`
+
+Why this saves space:
+- The full name bytes already exist in the Question section.
+- Each answer reuses those existing bytes instead of repeating them.
+- With one answer, saving is 16 bytes (18-byte name replaced by 2-byte pointer).
+- With multiple answers for the same NAME (e.g., A + AAAA + TXT), each additional answer saves another 16 bytes.
+
+Important constraints:
+- Pointers reference offsets in the **same DNS/mDNS message** only.
+- Pointers usually point backward to already-encoded names/suffixes.
+- A pointer can reference a whole name or a suffix (for example, reuse just `local`).
+- `0xC0`/`0xC00C` bytes are pointer metadata, not label text.
 
 ### QTYPE (Query Type) - 2 bytes
 
@@ -406,7 +441,7 @@ Raw Hex:
 00 00  <- Answer Count = 0
 00 00  <- Authority Count = 0
 00 00  <- Additional Count = 0
-09 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver" (len=9)
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver" (len=10)
 05 6c 6f 63 61 6c  <- "local" (len=5)
 00  <- Root (end of name)
 00 01  <- QTYPE = A record (1)
@@ -414,11 +449,11 @@ Raw Hex:
 
 Breakdown:
 Header:  12 bytes
-QNAME:   17 bytes ("homeserver.local")
+QNAME:   18 bytes ("homeserver.local")
 QTYPE:   2 bytes (A record)
 QCLASS:  2 bytes (IN)
 ---------
-Total:   33 bytes
+Total:   34 bytes
 ```
 
 ### mDNS A Record Response
@@ -433,7 +468,7 @@ Raw Hex:
 00 00  <- Additional Count = 0
 
 (Question section - echoed back)
-09 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver"
+0A 68 6f 6d 65 73 65 72 76 65 72  <- "homeserver"
 05 6c 6f 63 61 6c  <- "local"
 00  <- Root
 00 01  <- QTYPE = A
@@ -449,10 +484,10 @@ c0 a8 01 64  <- RDATA = 192.168.1.100
 
 Breakdown:
 Header:  12 bytes
-Question: 17 bytes
-Answer:  12 bytes (pointer + type + class + TTL + len + data=4)
+Question: 22 bytes
+Answer:  16 bytes (pointer + type + class + TTL + len + data=4)
 ---------
-Total:   41 bytes
+Total:   50 bytes
 ```
 
 ---

@@ -123,10 +123,12 @@ A standard response message contains:
 
 #### Response Types
 
+`AA` indicates **authoritative answer**.
+
 | Type | AA Flag | Multicast/Unicast | Purpose |
 |------|---------|-------------------|---------|
-| **Unicast Response** | 0 or 1 | Unicast to querier | Direct answer to unicast query |
-| **Multicast Response** | 1 | Multicast | Unsolicited announcement or multicast query response |
+| **Unicast Response** | Typically 1 in mDNS | Unicast to querier | Direct answer sent only to the requester |
+| **Multicast Response** | Typically 1 in mDNS | Multicast | Announcement or multicast query response visible to all listeners |
 
 #### Response Examples
 
