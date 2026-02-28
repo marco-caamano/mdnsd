@@ -199,7 +199,7 @@ The browser client sends a PTR query for a service type and listens for response
 ### Usage
 
 ```bash
-mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
+mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-p ipv4|ipv6|both] [-v]
 ```
 
 ### Options
@@ -207,6 +207,7 @@ mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
 - `-s, --service` (required): Service type to browse (e.g., `_http._tcp.local`)
 - `-w, --timeout`: Seconds to wait for responses (default: 2)
 - `-i, --interface`: Network interface name (optional, e.g., `eth0`)
+- `-p, --protocol`: Browse protocol family (`ipv4`, `ipv6`, or `both`; default: `both`)
 - `-v, --verbose`: Verbose output
 - `-h, --help`: Show help
 
@@ -216,8 +217,14 @@ mdns_browse -s <service-type> [-w <seconds>] [-i <interface>] [-v]
 # Browse HTTP services for 5 seconds
 mdns_browse -s _http._tcp.local -w 5
 
+# Browse HTTP services over IPv4 only
+mdns_browse -s _http._tcp.local -p ipv4
+
+# Browse HTTP services over IPv6 only
+mdns_browse -s _http._tcp.local -p ipv6
+
 # Browse SSH services on interface eth0
-mdns_browse -s _ssh._tcp.local -i eth0
+mdns_browse -s _ssh._tcp.local -i eth0 -p both
 ```
 
 ## Installation

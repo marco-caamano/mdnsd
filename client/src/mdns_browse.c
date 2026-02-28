@@ -1,8 +1,12 @@
+#define _DEFAULT_SOURCE
+
 #include <arpa/inet.h>
 #include <errno.h>
+#include <ifaddrs.h>
 #include <getopt.h>
 #include <inttypes.h>
 #include <net/if.h>
+#include <netinet/ip.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -21,9 +25,16 @@ typedef struct {
     const char *service_type;
     int timeout_seconds;
     const char *interface_name;
+    int protocol_mode;
     int verbose;
     log_level_t verbosity;
 } browse_config_t;
+
+enum {
+    BROWSE_PROTOCOL_IPV4 = 1,
+    BROWSE_PROTOCOL_IPV6 = 2,
+    BROWSE_PROTOCOL_BOTH = 3
+};
 
 static uint16_t read_u16(const uint8_t *ptr) {
     return (uint16_t)((ptr[0] << 8) | ptr[1]);
@@ -44,11 +55,12 @@ static long now_ms(void) {
 static void print_usage(const char *progname) {
     fprintf(stderr,
             "mDNS Browser - Browse service instances by type\n\n"
-            "Usage: %s -s <service-type> [-w <seconds>] [-i <interface>] [-v]\n\n"
+            "Usage: %s -s <service-type> [-w <seconds>] [-i <interface>] [-p ipv4|ipv6|both] [-v]\n\n"
             "Options:\n"
             "  -s, --service   Service type to browse (e.g. _http._tcp.local) [required]\n"
             "  -w, --timeout   Seconds to wait for responses (default: 2)\n"
             "  -i, --interface Network interface name (optional, e.g. eth0)\n"
+            "  -p, --protocol  Browse protocol: ipv4|ipv6|both (default: both)\n"
             "  -v, --verbose   Verbose output\n"
             "  -h, --help      Show this help\n",
             progname);
@@ -59,6 +71,7 @@ static int parse_args(int argc, char **argv, browse_config_t *cfg) {
         {"service", required_argument, 0, 's'},
         {"timeout", required_argument, 0, 'w'},
         {"interface", required_argument, 0, 'i'},
+        {"protocol", required_argument, 0, 'p'},
         {"verbose", no_argument, 0, 'v'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
@@ -72,10 +85,11 @@ static int parse_args(int argc, char **argv, browse_config_t *cfg) {
     cfg->service_type = NULL;
     cfg->timeout_seconds = 2;
     cfg->interface_name = NULL;
+    cfg->protocol_mode = BROWSE_PROTOCOL_BOTH;
     cfg->verbose = 0;
     cfg->verbosity = APP_LOG_WARN;
 
-    while ((opt = getopt_long(argc, argv, "s:w:i:vh", long_opts, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "s:w:i:p:vh", long_opts, NULL)) != -1) {
         switch (opt) {
             case 's':
                 cfg->service_type = optarg;
@@ -92,6 +106,18 @@ static int parse_args(int argc, char **argv, browse_config_t *cfg) {
             }
             case 'i':
                 cfg->interface_name = optarg;
+                break;
+            case 'p':
+                if (strcmp(optarg, "ipv4") == 0) {
+                    cfg->protocol_mode = BROWSE_PROTOCOL_IPV4;
+                } else if (strcmp(optarg, "ipv6") == 0) {
+                    cfg->protocol_mode = BROWSE_PROTOCOL_IPV6;
+                } else if (strcmp(optarg, "both") == 0) {
+                    cfg->protocol_mode = BROWSE_PROTOCOL_BOTH;
+                } else {
+                    fprintf(stderr, "Invalid protocol: %s\n", optarg);
+                    return -1;
+                }
                 break;
             case 'v':
                 cfg->verbose = 1;
@@ -314,6 +340,107 @@ static int open_browse_socket(const char *ifname, unsigned int *ifindex_out) {
     return fd;
 }
 
+static int get_interface_ipv4_addr(const char *ifname, struct in_addr *addr_out) {
+    struct ifaddrs *ifaddr = NULL;
+    struct ifaddrs *ifa;
+    int found = 0;
+
+    if (ifname == NULL || addr_out == NULL) {
+        return -1;
+    }
+
+    if (getifaddrs(&ifaddr) != 0) {
+        return -1;
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_name == NULL || ifa->ifa_addr == NULL) {
+            continue;
+        }
+        if (strcmp(ifa->ifa_name, ifname) != 0) {
+            continue;
+        }
+        if (ifa->ifa_addr->sa_family != AF_INET) {
+            continue;
+        }
+
+        *addr_out = ((const struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+        found = 1;
+        break;
+    }
+
+    freeifaddrs(ifaddr);
+    return found ? 0 : -1;
+}
+
+static int open_browse_socket_v4(const char *ifname, unsigned int *ifindex_out) {
+    int fd;
+    int yes = 1;
+    int ttl = 255;
+    struct sockaddr_in bind_addr;
+    struct ip_mreq mreq;
+    unsigned int ifindex = 0;
+    struct in_addr iface_addr;
+
+    iface_addr.s_addr = htonl(INADDR_ANY);
+
+    if (ifname != NULL) {
+        ifindex = if_nametoindex(ifname);
+        if (ifindex == 0) {
+            return -1;
+        }
+        if (get_interface_ipv4_addr(ifname, &iface_addr) != 0) {
+            return -1;
+        }
+    }
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return -1;
+    }
+
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    memset(&bind_addr, 0, sizeof(bind_addr));
+    bind_addr.sin_family = AF_INET;
+    bind_addr.sin_port = htons(MDNS_PORT);
+    bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    memset(&mreq, 0, sizeof(mreq));
+    if (inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr) != 1) {
+        close(fd);
+        return -1;
+    }
+    mreq.imr_interface = iface_addr;
+
+    if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    if (setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    if (ifname != NULL &&
+        setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &iface_addr, sizeof(iface_addr)) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    *ifindex_out = ifindex;
+    return fd;
+}
+
 static int send_ptr_query(int sockfd, const char *service_type_fqdn, unsigned int ifindex) {
     uint8_t query_buf[MDNS_MAX_PACKET];
     struct sockaddr_in6 mcast_addr;
@@ -343,6 +470,44 @@ static int send_ptr_query(int sockfd, const char *service_type_fqdn, unsigned in
     mcast_addr.sin6_port = htons(MDNS_PORT);
     mcast_addr.sin6_scope_id = ifindex;
     if (inet_pton(AF_INET6, "ff02::fb", &mcast_addr.sin6_addr) != 1) {
+        return -1;
+    }
+
+    if (sendto(sockfd, query_buf, offset, 0, (struct sockaddr *)&mcast_addr, sizeof(mcast_addr)) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+static int send_ptr_query_v4(int sockfd, const char *service_type_fqdn) {
+    uint8_t query_buf[MDNS_MAX_PACKET];
+    struct sockaddr_in mcast_addr;
+    size_t offset = 12;
+    size_t qname_len;
+
+    memset(query_buf, 0, sizeof(query_buf));
+    query_buf[4] = 0;
+    query_buf[5] = 1;
+
+    if (encode_qname(service_type_fqdn, &query_buf[offset], sizeof(query_buf) - offset, &qname_len) != 0) {
+        return -1;
+    }
+    offset += qname_len;
+
+    if (offset + 4 > sizeof(query_buf)) {
+        return -1;
+    }
+
+    query_buf[offset++] = 0;
+    query_buf[offset++] = DNS_TYPE_PTR;
+    query_buf[offset++] = 0;
+    query_buf[offset++] = DNS_CLASS_IN;
+
+    memset(&mcast_addr, 0, sizeof(mcast_addr));
+    mcast_addr.sin_family = AF_INET;
+    mcast_addr.sin_port = htons(MDNS_PORT);
+    if (inet_pton(AF_INET, "224.0.0.251", &mcast_addr.sin_addr) != 1) {
         return -1;
     }
 
@@ -383,7 +548,7 @@ static int parse_txt_strings(const uint8_t *rdata, size_t rdlen, char *out, size
 }
 
 static int print_response_records(const uint8_t *packet, size_t packet_len,
-                                  const struct sockaddr_in6 *src_addr,
+                                  const char *src_ip,
                                   const char *service_type_fqdn) {
     uint16_t qdcount;
     uint16_t ancount;
@@ -392,15 +557,8 @@ static int print_response_records(const uint8_t *packet, size_t packet_len,
     size_t offset = 12;
     uint32_t rr_total;
     uint32_t printed = 0;
-    char src_ip[INET6_ADDRSTRLEN];
-
-    if (packet == NULL || src_addr == NULL || service_type_fqdn == NULL || packet_len < 12) {
+    if (packet == NULL || src_ip == NULL || service_type_fqdn == NULL || packet_len < 12) {
         return -1;
-    }
-
-    if (inet_ntop(AF_INET6, &src_addr->sin6_addr, src_ip, sizeof(src_ip)) == NULL) {
-        strncpy(src_ip, "<unknown>", sizeof(src_ip));
-        src_ip[sizeof(src_ip) - 1] = '\0';
     }
 
     qdcount = read_u16(&packet[4]);
@@ -509,8 +667,10 @@ static int print_response_records(const uint8_t *packet, size_t packet_len,
 
 int main(int argc, char **argv) {
     browse_config_t cfg;
-    int sockfd;
-    unsigned int ifindex = 0;
+    int sockfd4 = -1;
+    int sockfd6 = -1;
+    unsigned int ifindex4 = 0;
+    unsigned int ifindex6 = 0;
     char service_type_fqdn[256];
     long deadline_ms;
     int total_records = 0;
@@ -530,15 +690,33 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    sockfd = open_browse_socket(cfg.interface_name, &ifindex);
-    if (sockfd < 0) {
-        if (cfg.interface_name != NULL) {
-            log_error("Failed to open browse socket for interface %s", cfg.interface_name);
-        } else {
-            log_error("Failed to open browse socket (try --interface <ifname>)");
+    if (cfg.protocol_mode == BROWSE_PROTOCOL_IPV4 || cfg.protocol_mode == BROWSE_PROTOCOL_BOTH) {
+        sockfd4 = open_browse_socket_v4(cfg.interface_name, &ifindex4);
+        if (sockfd4 < 0) {
+            if (cfg.interface_name != NULL) {
+                log_error("Failed to open IPv4 browse socket for interface %s", cfg.interface_name);
+            } else {
+                log_error("Failed to open IPv4 browse socket");
+            }
+            log_close();
+            return 1;
         }
-        log_close();
-        return 1;
+    }
+
+    if (cfg.protocol_mode == BROWSE_PROTOCOL_IPV6 || cfg.protocol_mode == BROWSE_PROTOCOL_BOTH) {
+        sockfd6 = open_browse_socket(cfg.interface_name, &ifindex6);
+        if (sockfd6 < 0) {
+            if (cfg.interface_name != NULL) {
+                log_error("Failed to open IPv6 browse socket for interface %s", cfg.interface_name);
+            } else {
+                log_error("Failed to open IPv6 browse socket (try --interface <ifname>)");
+            }
+            if (sockfd4 >= 0) {
+                close(sockfd4);
+            }
+            log_close();
+            return 1;
+        }
     }
 
     if (cfg.verbose) {
@@ -551,14 +729,37 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (send_ptr_query(sockfd, service_type_fqdn, ifindex) != 0) {
-        log_error("Failed to send PTR query: %s", strerror(errno));
-        close(sockfd);
+    if (sockfd4 >= 0 && send_ptr_query_v4(sockfd4, service_type_fqdn) != 0) {
+        log_error("Failed to send IPv4 PTR query: %s", strerror(errno));
+        if (sockfd4 >= 0) {
+            close(sockfd4);
+        }
+        if (sockfd6 >= 0) {
+            close(sockfd6);
+        }
         log_close();
         return 1;
     }
 
-    printf("Query sent: PTR %s\n", service_type_fqdn);
+    if (sockfd6 >= 0 && send_ptr_query(sockfd6, service_type_fqdn, ifindex6) != 0) {
+        log_error("Failed to send IPv6 PTR query: %s", strerror(errno));
+        if (sockfd4 >= 0) {
+            close(sockfd4);
+        }
+        if (sockfd6 >= 0) {
+            close(sockfd6);
+        }
+        log_close();
+        return 1;
+    }
+
+    if (cfg.protocol_mode == BROWSE_PROTOCOL_IPV4) {
+        printf("Query sent (IPv4): PTR %s\n", service_type_fqdn);
+    } else if (cfg.protocol_mode == BROWSE_PROTOCOL_IPV6) {
+        printf("Query sent (IPv6): PTR %s\n", service_type_fqdn);
+    } else {
+        printf("Query sent (IPv4+IPv6): PTR %s\n", service_type_fqdn);
+    }
     deadline_ms = now_ms() + (long)cfg.timeout_seconds * 1000L;
 
     for (;;) {
@@ -566,6 +767,7 @@ int main(int argc, char **argv) {
         fd_set rfds;
         struct timeval tv;
         int select_ret;
+        int maxfd = -1;
 
         remaining_ms = deadline_ms - now_ms();
         if (remaining_ms <= 0) {
@@ -573,15 +775,35 @@ int main(int argc, char **argv) {
         }
 
         FD_ZERO(&rfds);
-        FD_SET(sockfd, &rfds);
+        if (sockfd4 >= 0) {
+            FD_SET(sockfd4, &rfds);
+            if (sockfd4 > maxfd) {
+                maxfd = sockfd4;
+            }
+        }
+        if (sockfd6 >= 0) {
+            FD_SET(sockfd6, &rfds);
+            if (sockfd6 > maxfd) {
+                maxfd = sockfd6;
+            }
+        }
+
+        if (maxfd < 0) {
+            break;
+        }
 
         tv.tv_sec = (time_t)(remaining_ms / 1000L);
         tv.tv_usec = (suseconds_t)((remaining_ms % 1000L) * 1000L);
 
-        select_ret = select(sockfd + 1, &rfds, NULL, NULL, &tv);
+        select_ret = select(maxfd + 1, &rfds, NULL, NULL, &tv);
         if (select_ret < 0) {
             log_error("select() failed: %s", strerror(errno));
-            close(sockfd);
+            if (sockfd4 >= 0) {
+                close(sockfd4);
+            }
+            if (sockfd6 >= 0) {
+                close(sockfd6);
+            }
             log_close();
             return 1;
         }
@@ -590,21 +812,52 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        if (FD_ISSET(sockfd, &rfds)) {
+        if (sockfd4 >= 0 && FD_ISSET(sockfd4, &rfds)) {
+            uint8_t packet[MDNS_MAX_PACKET];
+            struct sockaddr_in src_addr;
+            socklen_t src_len = sizeof(src_addr);
+            ssize_t nread;
+            int printed;
+            char src_ip[INET_ADDRSTRLEN];
+
+            nread = recvfrom(sockfd4, packet, sizeof(packet), 0,
+                             (struct sockaddr *)&src_addr, &src_len);
+            if (nread < 0) {
+                log_warn("recvfrom() failed: %s", strerror(errno));
+            } else {
+                if (inet_ntop(AF_INET, &src_addr.sin_addr, src_ip, sizeof(src_ip)) == NULL) {
+                    strncpy(src_ip, "<unknown>", sizeof(src_ip));
+                    src_ip[sizeof(src_ip) - 1] = '\0';
+                }
+
+                printed = print_response_records(packet, (size_t)nread, src_ip, service_type_fqdn);
+                if (printed > 0) {
+                    total_records += printed;
+                }
+            }
+        }
+
+        if (sockfd6 >= 0 && FD_ISSET(sockfd6, &rfds)) {
             uint8_t packet[MDNS_MAX_PACKET];
             struct sockaddr_in6 src_addr;
             socklen_t src_len = sizeof(src_addr);
             ssize_t nread;
             int printed;
+            char src_ip[INET6_ADDRSTRLEN];
 
-            nread = recvfrom(sockfd, packet, sizeof(packet), 0,
+            nread = recvfrom(sockfd6, packet, sizeof(packet), 0,
                              (struct sockaddr *)&src_addr, &src_len);
             if (nread < 0) {
                 log_warn("recvfrom() failed: %s", strerror(errno));
                 continue;
             }
 
-            printed = print_response_records(packet, (size_t)nread, &src_addr, service_type_fqdn);
+            if (inet_ntop(AF_INET6, &src_addr.sin6_addr, src_ip, sizeof(src_ip)) == NULL) {
+                strncpy(src_ip, "<unknown>", sizeof(src_ip));
+                src_ip[sizeof(src_ip) - 1] = '\0';
+            }
+
+            printed = print_response_records(packet, (size_t)nread, src_ip, service_type_fqdn);
             if (printed > 0) {
                 total_records += printed;
             }
@@ -615,7 +868,12 @@ int main(int argc, char **argv) {
         printf("No responses for %s within %d second(s)\n", service_type_fqdn, cfg.timeout_seconds);
     }
 
-    close(sockfd);
+    if (sockfd4 >= 0) {
+        close(sockfd4);
+    }
+    if (sockfd6 >= 0) {
+        close(sockfd6);
+    }
     log_close();
     return total_records > 0 ? 0 : 1;
 }
