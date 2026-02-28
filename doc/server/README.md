@@ -1,172 +1,178 @@
-# Minimal mDNS Server Design
+# Server Documentation
 
-This document defines a minimalistic mDNS responder design focused only on the core features needed for local host and service resolution.
+The mDNS server (`mdnsd`) is a responder that listens on a network interface and answers mDNS queries for hostnames and services.
 
-## Scope (MVP Only)
+## Architecture
 
-The server supports only:
+The server consists of the following components:
 
-- `A` queries for `host.local.`
-- `AAAA` queries for `host.local.`
-- `SRV` queries for services
-- `TXT` records returned together with `SRV` answers
+### Core Components (Shared)
+- **log**: Logging system with multiple severity levels
+- **mdns**: DNS protocol parsing and response building
+- **hostdb**: Service and hostname database
 
-Out of scope for this minimal design:
+### Server-Specific Components
+- **main**: Event loop and query handler
+- **args**: Command-line argument parsing
+- **config**: INI configuration file parser
+- **socket**: IPv6 mDNS socket setup and multicast handling
 
-- `PTR` browsing responses
-- Probing/conflict renaming
-- Goodbye packets, advanced announcement logic
-- Multi-interface policy complexity
-- Dynamic ACL/rate-limit frameworks
+## Startup Sequence
 
-## Minimal Architecture
+1. Parse command-line arguments
+2. Initialize logging system
+3. Initialize host record database
+4. Load service definitions from config file
+5. Create and configure mDNS socket
+6. Register signal handlers (SIGINT, SIGTERM)
+7. Enter event loop
 
-Keep a single event loop and only essential modules:
+## Event Loop
 
-1. **Socket module**
-   - Open UDP `5353`
-   - Join mDNS multicast (`224.0.0.251`, `ff02::fb`)
-   - Receive queries and send responses
+The server uses `select()` to wait for events on the mDNS socket:
 
-2. **Packet codec**
-   - Parse DNS header + first question
-   - Encode response header, question echo, answer RRs
-   - Handle name encoding/compression safely
+1. Wait for incoming packet with 1-second timeout
+2. On packet received:
+   - Parse DNS question
+   - Validate query type (A, AAAA, or SRV)
+   - Look up answer in database
+   - Build response packet
+   - Send response to querier
+3. On signal received:
+   - Clean up resources
+   - Exit
 
-3. **Record store**
-   - One host record (`hostname`, optional `A`, optional `AAAA`)
-   - Service table for published services
+## Query Handling
 
-4. **Query dispatcher**
-   - Route by QTYPE (`A`, `AAAA`, `SRV`)
-   - For `SRV`, append matching `TXT` answer(s)
+### A/AAAA Queries (Hostname Resolution)
 
-5. **Registration API**
-   - Add/update/remove published services
-   - Validate names and required fields
+When a query arrives for a hostname:
 
-## Data Model
+1. Extract the QNAME from the question
+2. Normalize and match against local hostname
+3. If match found:
+   - Build response packet with A or AAAA records
+   - Send response
 
-### Host Record
+### SRV Queries (Service Discovery)
 
-```c
-typedef struct {
-    const char *hostname_fqdn;   // "my-host.local."
-    bool has_ipv4;
-    uint8_t ipv4[4];
-    bool has_ipv6;
-    uint8_t ipv6[16];
-    uint32_t ttl;
-} mdns_host_record_t;
+When a query arrives for a service:
+
+1. Extract the QNAME from the question
+2. Determine query type:
+   - **Targeted query**: Service instance FQDN (e.g., `My Web._http._tcp.local.`)
+     - Look up exact service by FQDN
+     - Return single SRV+TXT record pair
+   - **General query**: Service type (e.g., `_http._tcp.local.`)
+     - Find all services of matching type
+     - Return SRV+TXT record pairs for all matches
+3. Build response packet
+4. Send response
+
+## Configuration File
+
+Services are registered via an INI-style configuration file with `[service]` sections.
+
+### Example Configuration
+
+```ini
+[service]
+instance = My Web Server
+type = _http._tcp
+port = 8080
+target = my-host.local
+txt.path = /
+txt.version = 1.0
+
+[service]
+instance = SSH Server
+type = _ssh._tcp
+port = 22
+target = my-host.local
 ```
 
-### Service Record
+### Field Description
 
-```c
-typedef struct {
-    const char *instance;        // "My Web"
-    const char *service_type;    // "_http._tcp"
-    const char *domain;          // "local"
-    uint16_t priority;
-    uint16_t weight;
-    uint16_t port;
-    const char *target_host;     // "my-host.local."
-    const char **txt_kv;         // {"path=/", "ver=1"}
-    size_t txt_kv_count;
-    uint32_t ttl;
-} mdns_service_t;
+**Required:**
+- `instance`: Display name for the service
+- `type`: Underscore-prefixed service type (_proto._tcp or _proto._udp)
+- `port`: Port number where service is available
+- `target`: Target hostname (typically hostname.local)
+
+**Optional:**
+- `domain`: DNS domain, default is "local"
+- `priority`: SRV priority, default is 0
+- `weight`: SRV weight, default is 0
+- `ttl`: Time-to-live in seconds, default is 120
+- `txt.key`: TXT record entries (multiple allowed)
+
+## Logging
+
+The server supports both console and syslog logging with configurable verbosity:
+
+- **ERROR**: Errors that prevent operation
+- **WARN**: Warnings about configuration or query issues
+- **INFO**: Informational messages about service registration and queries
+- **DEBUG**: Detailed debugging information
+
+### Console Logging
+
+Timestamped output to stderr:
+```
+2025-02-28 14:32:10 [INFO] mdnsd started on interface eth0 for host myhost
+2025-02-28 14:32:10 [INFO] Registered service: Web._http._tcp.local:8080
 ```
 
-## Required Query Behavior
+### Syslog Logging
 
-### 1) A Query
-
-- If QNAME matches configured host and IPv4 exists, return one `A` answer.
-
-### 2) AAAA Query
-
-- If QNAME matches configured host and IPv6 exists, return one `AAAA` answer.
-
-### 3) SRV Query (Targeted Service Query)
-
-Targeted query means QNAME is a specific instance FQDN, for example:
-
-- `My Web._http._tcp.local.`
-
-Behavior:
-
-- Return one `SRV` answer for that instance
-- Return matching `TXT` answer for same owner name
-- Optionally include target host `A/AAAA` in Additional section
-
-### 4) SRV Query (General Service Query)
-
-General query means QNAME is a service type FQDN, for example:
-
-- `_http._tcp.local.`
-
-Behavior in this minimal server:
-
-- Find all registered instances with `service_type == _http._tcp` and `domain == local`
-- Return one `SRV` answer per matching instance
-- Return corresponding `TXT` answer per instance
-- If none match, return no answers
-
-This gives basic service enumeration without implementing `PTR` in the MVP.
+Sends messages to system syslog with LOG_DAEMON facility.
 
 ## Service Registration API
 
-Server must expose a way to register services it publishes.
-
-### C API
+The server can programmatically register, update, and unregister services using the hostdb API:
 
 ```c
-int mdns_register_service(const mdns_service_t *svc);
-int mdns_update_service(const mdns_service_t *svc);
-int mdns_unregister_service(const char *instance_fqdn);
-size_t mdns_list_services(mdns_service_t *out, size_t max_items);
+mdns_service_t service = {
+    .instance = "My Service",
+    .service_type = "_http._tcp",
+    .domain = "local",
+    .port = 8080,
+    .target = "host.local",
+    .priority = 0,
+    .weight = 0,
+    .ttl = 120
+};
+
+mdns_register_service(&service);
 ```
 
-### Validation Rules
+## Performance Considerations
 
-- `instance`, `service_type`, `domain`, `target_host` are required
-- `service_type` should look like `_name._tcp` or `_name._udp`
-- `domain` must be `local`
-- `port` must be non-zero
-- Duplicate instance FQDN updates existing entry or returns conflict (pick one policy and keep it consistent)
+- Uses `select()` for efficient I/O multiplexing
+- Single-threaded design suitable for light to moderate workloads
+- Multicast responses may require tuning TTL/multicast scope settings
+- Service list is in-memory with dynamic allocation
 
-### Minimal Registration Flow
+## Limitations
 
-1. Validate input fields
-2. Normalize FQDN strings
-3. Insert/update service in in-memory table
-4. Service becomes immediately available for `SRV` queries
+- No probing or conflict detection
+- No rapid response retransmission mechanism
+- No multicast suppression
+- Host database limited to loopback addresses by default
+- Single interface per instance (run multiple instances for multiple interfaces)
 
-## Response Construction Rules
+## Troubleshooting
 
-- Set response flags for authoritative answer
-- Echo original question in response
-- For `SRV` responses, always include paired `TXT`
-- Keep default TTL simple (for example `120` seconds)
-- Drop malformed packets silently or log at debug level
+### Server not responding
 
-## Suggested Incremental Implementation Order
+1. Check interface name: `ip link show`
+2. Verify IPv6 connectivity: `ping6 ff02::fb%eth0`
+3. Check firewall rules for UDP port 5353
+4. Enable debug logging: `-v DEBUG`
 
-1. `A` + `AAAA` exact host answers
-2. Service table + registration API
-3. Targeted `SRV` + paired `TXT`
-4. General `SRV` query returning all matching instances
-5. Optional additional `A/AAAA` in `SRV` responses
+### Services not visible
 
----
-
-## Notes for This Repository (`mdnsd`)
-
-Given current module split (`socket`, `mdns`, `hostdb`, `main`), a minimal path is:
-
-- Extend `hostdb` to store a small array/vector of `mdns_service_t`
-- Add `SRV` and `TXT` encoding support in `mdns` module
-- Route `SRV` queries in `main` through two paths:
-  - targeted instance query
-  - general service-type query
-- Add registration entry points (CLI/config or function API)
+1. Verify config file syntax
+2. Check required fields are set
+3. Look for configuration parsing warnings in logs
+4. Query with dig/nslookup to test

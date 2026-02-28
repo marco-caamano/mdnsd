@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "mdns.h"
+#define MDNS_PORT 5353
 
 int mdns_socket_open(const char *ifname) {
     int fd;

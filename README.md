@@ -1,26 +1,32 @@
 # mDNSd
 
-`mdnsd` is a lightweight IPv6 mDNS responder with service discovery support, implemented in C99.
-It binds to a selected network interface, listens on the mDNS multicast endpoint, parses incoming DNS questions, and returns A/AAAA answers for hostname resolution and SRV/TXT answers for service discovery.
+A lightweight IPv6 mDNS (Multicast DNS) implementation in C99, separated into **server** and **client** applications:
+
+- **Server (`mdnsd`)**: Responder that listens on a network interface and responds to mDNS queries
+- **Client (`mdnsc`)**: Query tool for discovering services and resolving hostnames via mDNS
 
 ## Features
 
-- C99 implementation with strict compiler flags
-- Interface-scoped IPv6 UDP socket for mDNS (`ff02::fb:5353`)
-- Command-line configuration for:
-  - interface (`-i`, required)
-  - config file (`-c`, optional)
-  - verbosity (`-v ERROR|WARN|INFO|DEBUG`)
-  - logging target (`-l console|syslog`)
-- Logging to console (timestamped) or syslog
-- mDNS query parsing for DNS question section
-- A/AAAA response generation for hostname resolution
-- SRV/TXT response generation for service discovery
-- Service registration API with dynamic memory allocation
+### Shared Components
+- C99 implementation with strict compiler flags  
+- Core DNS/mDNS packet parsing and response building
+- IPv6 mDNS support (`ff02::fb:5353`)
+- Unified logging system
+- Service and host database management
+
+### Server Features
+- Interface-scoped IPv6 UDP socket for mDNS listening
+- Service discovery responder (A/AAAA and SRV/TXT records)
 - INI-style config file for service definitions
-- Support for targeted and general service queries
-- DNS name compression for efficient responses
-- Graceful shutdown on `SIGINT` / `SIGTERM`
+- Dynamic service registration API
+- Graceful shutdown on `SIGINT`/`SIGTERM`
+- Console and syslog logging targets
+
+### Client Features
+- Query mDNS for hostnames (A/AAAA records)
+- Discover services (SRV/TXT records)
+- IPv4 and IPv6 filtering options
+- Timeout-based query responses
 
 ## Build
 
@@ -28,9 +34,9 @@ It binds to a selected network interface, listens on the mDNS multicast endpoint
 make
 ```
 
-This builds the `mdnsd` binary in the repository root.
+This builds both `mdnsd` (server) and `mdnsc` (client) binaries in the repository root.
 
-### Build settings
+### Build Settings
 
 The project uses:
 
@@ -38,50 +44,75 @@ The project uses:
 - Strict warnings: `-Wall -Wextra -Werror -pedantic`
 - POSIX declarations: `-D_POSIX_C_SOURCE=200809L`
 
-## Run
+## Project Structure
 
-```bash
-./mdnsd -i <interface> [-c <config>] [-v ERROR|WARN|INFO|DEBUG] [-l console|syslog]
+```
+.
+├── shared/              # Shared code (server and client)
+│   ├── include/
+│   │   ├── log.h
+│   │   ├── mdns.h       # Core DNS/mDNS protocol
+│   │   └── hostdb.h     # Data structures
+│   └── src/
+│       ├── log.c
+│       ├── mdns.c
+│       └── hostdb.c
+├── server/              # Server implementation
+│   ├── include/
+│   │   ├── args.h
+│   │   ├── config.h
+│   │   └── socket.h
+│   └── src/
+│       ├── main.c
+│       ├── args.c
+│       ├── config.c
+│       └── socket.c
+├── client/              # Client implementation
+│   ├── include/
+│   │   └── args.h
+│   └── src/
+│       ├── main.c
+│       └── args.c
+└── doc/                 # Documentation
+    ├── mdns/
+    └── server/
 ```
 
-Examples:
+## Server: `mdnsd`
+
+The mDNS responder listens on a network interface and responds to queries.
+
+### Usage
+
+```bash
+mdnsd -i <interface> [-c <config>] [-v ERROR|WARN|INFO|DEBUG] [-l console|syslog]
+```
+
+### Options
+
+- `-i, --interface` (required): Network interface name
+- `-c, --config`: Config file path for service definitions
+- `-v, --verbosity`: Log verbosity level (default: WARN)
+- `-l, --log`: Log target: console or syslog (default: console)
+- `-h, --help`: Show help
+
+### Examples
 
 ```bash
 # Run without services
-./mdnsd -i eth0
+mdnsd -i eth0
 
 # Run with service discovery
-./mdnsd -i eth0 -c services.conf
+mdnsd -i eth0 -c services.conf
 
 # Run with debug logging
-./mdnsd -i eth0 -c services.conf -v DEBUG
+mdnsd -i eth0 -c services.conf -v DEBUG
 
 # Run with syslog
-./mdnsd -i eth0 -c services.conf -l syslog -v INFO
+mdnsd -i eth0 -c services.conf -l syslog -v INFO
 ```
 
-Show help:
-
-```bash
-./mdnsd -h
-```
-
-## Design Overview
-
-The application follows a small modular architecture:
-
-- `main` loop orchestration
-- command-line parsing
-- config file parsing
-- logging abstraction
-- socket/multicast setup
-- host and service database
-- DNS/mDNS packet parsing and response construction
-- service registration API
-
-This keeps protocol logic separate from system setup and runtime control.
-
-## Configuration File
+### Configuration
 
 Services are defined in an INI-style config file:
 
@@ -118,185 +149,153 @@ ttl = 120
 - `ttl` - Time to live in seconds (default: 120)
 - `txt.key=value` - TXT records (multiple allowed)
 
-## Modules
+## Client: `mdnsc`
 
-### `src/main.c`
+The mDNS client queries for hostnames and services on the local network.
 
-- Parses configuration via `parse_args`
-- Initializes logging (`log_init`)
-- Initializes local host record (`hostdb_init`)
-- Loads services from config file (`config_load_services`)
-- Opens and configures mDNS socket (`mdns_socket_open`)
-- Runs event loop with `select()`
-- Receives datagrams with `recvfrom()`
-- Parses question with `mdns_parse_query()`
-- Filters supported types (A/AAAA/SRV)
-- Routes A/AAAA queries via `hostdb_lookup()`
-- Routes SRV queries (targeted or general) via service lookup
-- Builds and sends responses with `mdns_build_response()` or `mdns_build_service_response()` + `sendto()`
-- Handles shutdown signals and cleanup
+### Usage
 
-### `src/args.c` + `include/args.h`
+```bash
+mdnsc [-t hostname|service|ipv4|ipv6] [-4|-6] [-v] <query-target>
+```
 
-- Defines `app_config_t`:
-  - `interface_name`
-  - `config_path`
-  - `verbosity`
-  - `log_target`
+### Options
+
+- `-t, --type`: Query type (default: hostname)
+  - `hostname` - resolve hostname to address (A/AAAA)
+  - `service` - discover service by FQDN or type
+  - `ipv4` - query for IPv4 address only
+  - `ipv6` - query for IPv6 address only
+- `-4, --ipv4`: IPv4 only (A records)
+- `-6, --ipv6`: IPv6 only (AAAA records)
+- `-v, --verbose`: Verbose output
+- `-h, --help`: Show help
+
+### Examples
+
+```bash
+# Resolve a hostname
+mdnsc myhost
+
+# Query for a specific service
+mdnsc -t service "My Web Server._http._tcp.local"
+
+# Discover all HTTP services
+mdnsc -t service "_http._tcp.local"
+
+# IPv6 only query
+mdnsc -6 myhost
+
+# Verbose output
+mdnsc -v myhost
+```
+
+## Installation
+
+```bash
+make install
+```
+
+This installs `mdnsd` and `mdnsc` to `/usr/local/bin/`.
+
+## Uninstallation
+
+```bash
+make uninstall
+```
+
+## Module Overview
+
+### Shared Modules
+
+#### `shared/log.c` + `shared/include/log.h`
+
+Provides severity levels (ERROR, WARN, INFO, DEBUG) with:
+- Runtime verbosity filtering
+- Console mode: timestamped stderr lines
+- Syslog mode: openlog/syslog/closelog integration
+- Convenience macros: `log_error`, `log_warn`, `log_info`, `log_debug`
+
+#### `shared/mdns.c` + `shared/include/mdns.h`
+
+Core DNS/mDNS protocol handling:
+- Parses DNS question sections from incoming packets
+- Decodes QNAME labels and extracts QTYPE/QCLASS
+- Supports DNS types: A (1), TXT (16), AAAA (28), SRV (33)
+- Builds DNS response packets with multiple answer records
+- Encodes SRV records (priority, weight, port, target)
+- Encodes TXT records (length-prefixed key=value strings)
+- Uses compression pointers for efficient encoding
+
+#### `shared/hostdb.c` + `shared/include/hostdb.h`
+
+In-memory database for hosts and services:
+- **host_record_t**: hostname, IPv4, IPv6 addresses with TTL
+- **mdns_service_t**: instance, service type, domain, priority, weight, port, target, TXT records, TTL
+- Service registration API: register, update, unregister, list, lookup
+- Performs case-insensitive hostname matching
+- Supports dynamic memory allocation with proper cleanup
+
+### Server-Specific Modules
+
+#### `server/src/main.c`
+
+Event loop and query handler:
+- Initializes configuration via `parse_args`
+- Sets up logging and host database
+- Opens mDNS socket and loads services
+- Waits for incoming packets with `select()`
+- Parses questions and routes responses
+- Handles A/AAAA (hostname) and SRV (service) queries
+- Sends responses and manages shutdown
+
+#### `server/src/args.c` + `server/include/args.h`
+
+Server argument parsing:
+- Interface (`-i`, required)
+- Config file (`-c`, optional)
+- Verbosity (`-v`)
+- Log target (`-l`)
 - Validates required interface option
-- Parses short/long options using `getopt_long`
-- Prints usage/help text
 
-### `src/config.c` + `include/config.h`
+#### `server/src/config.c` + `server/include/config.h`
 
-- Parses INI-style config file
-- Reads `[service]` sections with key=value pairs
+INI config file parsing:
+- Reads `[service]` sections
 - Validates required fields (instance, type, port, target)
 - Handles optional fields (priority, weight, ttl, domain)
 - Parses TXT records via `txt.key=value` syntax
-- Calls `mdns_register_service()` for each valid service
-- Logs warnings for invalid entries
-- Returns count of successfully loaded services
+- Registers services and logs results
 
-### `src/log.c` + `include/log.h`
+#### `server/src/socket.c` + `server/include/socket.h`
 
-- Provides severity levels:
-  - `APP_LOG_ERROR`
-  - `APP_LOG_WARN`
-  - `APP_LOG_INFO`
-  - `APP_LOG_DEBUG`
-- Runtime verbosity filtering
-- Console mode:
-  - timestamped stderr lines
-- Syslog mode:
-  - `openlog()` / `syslog()` / `closelog()`
-- Convenience macros: `log_error`, `log_warn`, `log_info`, `log_debug`
+IPv6 mDNS socket setup:
+- Resolves interface index from name
+- Creates IPv6 UDP socket with proper socket options
+- Binds to port 5353 and joins mDNS multicast group `ff02::fb`
+- Sets multicast TTL and interface
 
-### `src/socket.c` + `include/socket.h`
+### Client-Specific Modules
 
-- Resolves interface index (`if_nametoindex`)
-- Creates IPv6 UDP socket
-- Applies socket options:
-  - `SO_REUSEADDR`
-  - `IPV6_V6ONLY`
-  - `IPV6_MULTICAST_HOPS = 255`
-  - `IPV6_MULTICAST_IF`
-- Binds to wildcard IPv6 on port `5353`
-- Joins mDNS IPv6 multicast group `ff02::fb`
+#### `client/src/main.c`
 
-### `src/hostdb.c` + `include/hostdb.h`
+Query dispatcher:
+- Creates temporary mDNS socket
+- Sends single query based on type (A/AAAA/SRV)
+- Waits for response with timeout
+- Prints results or "no response"
 
-- Maintains in-memory `host_record_t` with:
-  - hostname
-  - optional IPv4 address
-  - optional IPv6 address
-  - TTL value
-- Maintains dynamic service list with `mdns_service_t` entries:
-  - instance name
-  - service type (e.g., `_http._tcp`)
-  - domain
-  - priority, weight, port
-  - target hostname
-  - TXT records (key-value pairs)
-  - TTL value
-- Service registration API:
-  - `mdns_register_service()` - Register new service (returns error on duplicate)
-  - `mdns_update_service()` - Update existing service
-  - `mdns_unregister_service()` - Remove service
-  - `mdns_list_services()` - List all services
-- Service lookup API:
-  - `mdns_find_service_by_fqdn()` - Find specific instance by full name
-  - `mdns_find_services_by_type()` - Find all services of given type
-- Initializes hostname from system `gethostname()` (or hint)
-- Current default address data:
-  - IPv4: `127.0.0.1`
-  - IPv6: `::1`
-- Performs normalized case-insensitive hostname match
-- Dynamic memory allocation for services with proper cleanup
+#### `client/src/args.c` + `client/include/args.h`
 
-### `src/mdns.c` + `include/mdns.h`
+Client argument parsing:
+- Query type (hostname, service, ipv4, ipv6)
+- IPv4/IPv6 filtering
+- Verbose mode
+- Positional query target argument
 
-- Parses DNS question section from incoming packet
-- Decodes QNAME labels into dotted form
-- Extracts QTYPE/QCLASS
-- Supports DNS types:
-  - `DNS_TYPE_A` (1) - IPv4 address
-  - `DNS_TYPE_TXT` (16) - Text records
-  - `DNS_TYPE_AAAA` (28) - IPv6 address
-  - `DNS_TYPE_SRV` (33) - Service location
-- Builds DNS response packets:
-  - `mdns_build_response()` - A/AAAA records
-  - `mdns_build_service_response()` - SRV+TXT records
-- SRV record encoding:
-  - Priority, weight, port
-  - Target hostname
-- TXT record encoding:
-  - Length-prefixed key=value strings
-  - Empty record if no TXT data
-- Writes DNS header + echoed question + answer records
-- Supports multiple answer records in single response
-- Uses compression pointers for efficient encoding
+## Query Examples
 
-### `Makefile`
-
-- Builds all `src/*.c` into `build/*.o`
-- Links executable `mdnsd`
-- Targets:
-  - `make` / `make all`
-  - `make clean`
-  - `make install`
-
-## IPv6 mDNS Flow (and Code Mapping)
-
-This section describes the network flow and where each step is implemented.
-
-1. **Interface selection and socket setup**
-   - User selects interface via `-i`.
-   - Code: `parse_args()` in `src/args.c`, then `mdns_socket_open()` in `src/socket.c`.
-   - Socket joins `ff02::fb` on UDP 5353 scoped to that interface.
-
-2. **Listening for mDNS queries**
-   - Daemon waits on socket readability using `select()`.
-   - Code: event loop in `src/main.c`.
-
-3. **Receiving packet**
-   - Incoming datagram is read with `recvfrom()` into packet buffer.
-   - Code: `src/main.c`.
-
-4. **DNS question parsing**
-   - Header and first question are parsed:
-     - QNAME (e.g., `host.local.` or `_http._tcp.local.`)
-     - QTYPE (`A`, `AAAA`, or `SRV`)
-     - QCLASS (`IN`)
-   - Code: `mdns_parse_query()` in `src/mdns.c`.
-
-5. **Question filtering and name lookup**
-   - A/AAAA/SRV queries are handled.
-   - For A/AAAA: Hostname is matched against local database record.
-   - For SRV: Service is looked up by instance FQDN (targeted) or service type (general).
-   - Code: `is_supported_query_type()` in `src/main.c`, `hostdb_lookup()` and service lookup functions in `src/hostdb.c`.
-
-6. **Response construction**
-   - DNS response is generated with:
-     - response + authoritative flags
-     - echoed question
-     - answer records:
-       - One A or AAAA record for hostname queries
-       - Multiple SRV+TXT record pairs for service queries
-   - For general service queries, all matching services are returned.
-   - Code: `mdns_build_response()` and `mdns_build_service_response()` in `src/mdns.c`.
-
-7. **Response transmission**
-   - Response datagram is sent via `sendto()` back to sender endpoint.
-   - Code: `src/main.c`.
-
-8. **Operational observability**
-   - Each important state and error path is logged at selected verbosity.
-   - Code: `src/log.c` used across modules.
-
-## Query Support
-
-### A/AAAA Queries (Hostname Resolution)
+### Server: Using dig for queries
 
 ```bash
 # Query for IPv4 address
@@ -304,28 +303,27 @@ dig @::1 -p 5353 hostname.local A
 
 # Query for IPv6 address
 dig @::1 -p 5353 hostname.local AAAA
-```
 
-### SRV Queries (Service Discovery)
-
-**Targeted query** (specific service instance):
-```bash
+# Query specific service
 dig @::1 -p 5353 "My Web Server._http._tcp.local" SRV
-```
-Returns: Single SRV+TXT record pair for that instance
 
-**General query** (all services of a type):
-```bash
+# Query all services of a type
 dig @::1 -p 5353 "_http._tcp.local" SRV
 ```
-Returns: SRV+TXT record pairs for all `_http._tcp` services
 
-## Current Scope and Notes
+## Scope and Limitations
 
 - Query support: A/AAAA hostname resolution and SRV/TXT service discovery
-- PTR browsing responses are not implemented (use general SRV queries instead)
+- PTR browsing responses are not implemented
 - Probing and conflict detection are not implemented
-- Service registration via API (conflict errors on duplicates)
-- Dynamic memory allocation for flexible service storage
 - Host database uses loopback addresses (127.0.0.1, ::1) by default
-- Designed as a minimalistic but functional mDNS responder for basic service discovery use cases
+- Designed as a minimalistic mDNS implementation for basic service discovery
+
+## Additional Documentation
+
+See the [doc/](doc/) directory for:
+- [doc/mdns/protocol-overview.md](doc/mdns/protocol-overview.md) - mDNS protocol overview
+- [doc/mdns/packet-format.md](doc/mdns/packet-format.md) - DNS packet format
+- [doc/mdns/message-types.md](doc/mdns/message-types.md) - DNS message types
+- [doc/mdns/multicast-groups.md](doc/mdns/multicast-groups.md) - mDNS multicast groups
+- [doc/mdns/a-record-exchange.md](doc/mdns/a-record-exchange.md) - A record exchange example
